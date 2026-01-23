@@ -7,25 +7,17 @@
   <link rel="stylesheet" href="./styles.css" />
 
   <script>
-/* === FORCE_PATCH v1_5_1 (file:/// safe) ===
-   - file:// origin(null)에서도 외부 전송/rum/xhr류 에러로 앱이 죽지 않게 방어
-   - Enter키로 다음 입력칸 이동(캡처링)
-   - 계산 로직은 app.js(recalc)에서만 수행 (중복 방지)
-*/
+/* === FORCE_PATCH v1_5_1 (file:/// safe) === */
 (function(){
   'use strict';
   var PATCH='v1_5_1';
-
-  function swallow(msg){
-    try{ return String(msg||''); }catch(e){ return ''; }
-  }
+  function swallow(msg){ try{ return String(msg||''); }catch(e){ return ''; } }
 
   window.addEventListener('error', function(ev){
     try{
       var m = swallow(ev && (ev.message||ev.error&&ev.error.message));
       if(/CORS|cross-origin|XMLHttpRequest|cdn-cgi\/rum|ERR_FAILED|Access-Control-Allow-Origin/i.test(m)){
-        ev.preventDefault && ev.preventDefault();
-        return true;
+        ev.preventDefault && ev.preventDefault(); return true;
       }
     }catch(e){}
   }, true);
@@ -34,19 +26,14 @@
     try{
       var m = swallow(ev && ev.reason);
       if(/CORS|cross-origin|XMLHttpRequest|cdn-cgi\/rum|ERR_FAILED|Access-Control-Allow-Origin/i.test(m)){
-        ev.preventDefault && ev.preventDefault();
-        return true;
+        ev.preventDefault && ev.preventDefault(); return true;
       }
     }catch(e){}
   }, true);
 
   function qa(sel){return Array.prototype.slice.call(document.querySelectorAll(sel))}
   function q(sel){return document.querySelector(sel)}
-
-  function setPill(){
-    var pill = q('.pill');
-    if(pill) pill.textContent = 'Quote + FORCE_PATCH ' + PATCH;
-  }
+  function setPill(){ var pill = q('.pill'); if(pill) pill.textContent = 'Quote + FORCE_PATCH ' + PATCH; }
 
   function nextFocusable(from){
     var els = qa("input, select, textarea, button").filter(function(el){
@@ -81,9 +68,7 @@
     }catch(err){}
   }, true);
 
-  function boot(){
-    try{ setPill(); }catch(e){}
-  }
+  function boot(){ try{ setPill(); }catch(e){} }
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded', boot, {once:true});
   } else boot();
@@ -148,14 +133,14 @@
             <div class="sbd" style="display:none"><div class="ab-grid" id="group_print"></div></div>
           </div>
 
-          <!-- 새로 분리된 그룹들 -->
           <div class="section" data-open="0" data-group="coating">
             <div class="shd"><strong>코팅/후가공</strong><span>코팅종류/후가공종류/후가공단가</span></div>
             <div class="sbd" style="display:none"><div class="ab-grid" id="group_coating"></div></div>
           </div>
 
+          <!-- 문구 변경된 부분 -->
           <div class="section" data-open="0" data-group="shipping">
-            <div class="shd"><strong>운송</strong><span>운송지역/하차지/차종/수작업하차/상차비</span></div>
+            <div class="shd"><strong>운송</strong><span>운송지역/차종/운송금액</span></div>
             <div class="sbd" style="display:none"><div class="ab-grid" id="group_shipping"></div></div>
           </div>
 
