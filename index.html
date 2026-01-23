@@ -68,7 +68,6 @@
       var t = e.target;
       if(!t) return;
       if(t.tagName==='TEXTAREA' && e.shiftKey) return;
-      // allow buttons default with enter
       if(t.tagName==='BUTTON') return;
 
       e.preventDefault();
@@ -125,7 +124,7 @@
 
         <div class="panel-bd">
           <div class="filterbar">
-            <input id="fieldFilter" class="field" type="text" placeholder="필드 검색 (예: 용지, 원단, 관리비, 인쇄)" />
+            <input id="fieldFilter" class="field" type="text" placeholder="필드 검색 (예: 용지, 원단, 코팅, 운송, 관리비)" />
             <button id="btnClearFilter" class="btn" type="button">지우기</button>
           </div>
 
@@ -149,11 +148,36 @@
             <div class="sbd" style="display:none"><div class="ab-grid" id="group_print"></div></div>
           </div>
 
-          <!-- 변경된 부분 -->
-          <div class="section" data-open="0" data-group="post">
+          <!-- 새로 분리된 그룹들 -->
+          <div class="section" data-open="0" data-group="coating">
             <div class="shd"><strong>코팅/후가공</strong><span>코팅종류/후가공종류/후가공단가</span></div>
-            <div class="sbd" style="display:none"><div class="ab-grid" id="group_post"></div></div>
+            <div class="sbd" style="display:none"><div class="ab-grid" id="group_coating"></div></div>
           </div>
+
+          <div class="section" data-open="0" data-group="shipping">
+            <div class="shd"><strong>운송</strong><span>운송지역/하차지/차종/수작업하차/상차비</span></div>
+            <div class="sbd" style="display:none"><div class="ab-grid" id="group_shipping"></div></div>
+          </div>
+
+          <div class="section" data-open="0" data-group="admin">
+            <div class="shd"><strong>관리비/이윤</strong><span>관리비율/이윤율</span></div>
+            <div class="sbd" style="display:none"><div class="ab-grid" id="group_admin"></div></div>
+          </div>
+
+          <div class="section" data-open="0" data-group="dev">
+            <div class="shd"><strong>개발비</strong><span>자유항목(판매가 포함)</span></div>
+            <div class="sbd" style="display:none">
+              <div id="devList"></div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="btn" id="btnDevAdd" type="button">+ 항목 추가</button>
+                <button class="btn" id="btnDevClear" type="button">전체 삭제</button>
+              </div>
+              <div class="hint" style="margin-top:8px; font-size:12px; color: rgba(15,23,42,.65);">
+                예: 샘플비 200,000 / 목형대 150,000
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -189,6 +213,7 @@
                 <tbody></tbody>
               </table>
             </div>
+
           </div>
         </div>
       </section>
@@ -198,7 +223,7 @@
         <div class="panel-hd">
           <div>
             <div class="h">구성비(판매가 기준)</div>
-            <div class="hint">0원 항목 자동 숨김</div>
+            <div class="hint">개발비 포함 · 0원 항목 자동 숨김</div>
           </div>
           <div class="hint">실시간</div>
         </div>
@@ -210,23 +235,6 @@
               <div class="s" id="ratioSum">합계: -</div>
             </div>
             <div class="bbody" id="ratioList"></div>
-          </div>
-
-          <div style="height:12px"></div>
-
-          <div class="break" id="devPanel">
-            <div class="bhd">
-              <div class="t">개발비(자유항목)</div>
-              <div class="s">base 제외 · sellTotal 포함</div>
-            </div>
-            <div class="bbody">
-              <div id="devList"></div>
-              <div style="display:flex; gap:8px; margin-top:10px;">
-                <button class="btn" id="btnDevAdd" type="button">+ 항목 추가</button>
-                <button class="btn" id="btnDevClear" type="button">전체 삭제</button>
-              </div>
-              <div class="hint" style="margin-top:8px; font-size:12px;">예: 샘플비 200,000 / 목형대 150,000</div>
-            </div>
           </div>
         </div>
       </section>

@@ -1,17 +1,18 @@
 /* Quote app.js
    목표(1차):
    - FIELD_DEFS로 입력폼을 100% 생성(추가/변경 쉬움)
-   - 입력 UX: percent(0.00%), money(콤마), select+custom 안정화, readOnly 보호
+   - 입력 UX: percent(0.00%), money(콤마), select+custom 안정화, readonly 보호
    - 중앙 계산/우측 비율/하단 참조표 기본 연결
+   - 좌측 섹션: 코팅/후가공, 운송, 관리비/이윤, 개발비 분리
 */
 
-const APP_VERSION = "Quote-0.1.0";
+const APP_VERSION = "Quote-0.1.1";
 
-// =====================
+//
 // 1) Field definitions
-// =====================
-// group: basic | paper | material | print | post
+// group: basic | paper | material | print | coating | shipping | admin
 // type: text | mm | int | money | percent | select | select+custom | readonly-text
+//
 const FIELD_DEFS = [
   // BASIC
   { group:'basic', key:'companyName', label:'업체명', type:'text', placeholder:'예) ○○상사' },
@@ -32,7 +33,7 @@ const FIELD_DEFS = [
     placeholder:'용지선택', customLabel:'직접입력'
   },
   { group:'paper', key:'gsm', label:'평량(gsm)', type:'int', default:240 },
-  { group:'paper', key:'paperKgPrice', label:'용지가(KG단가)', type:'money' },
+  { group:'paper', key:'paperKgPrice', label:'용지가(KG단가)', type:'money', default:0 },
   { group:'paper', key:'paperSheetLen', label:'용지 장(mm)', type:'mm' },
   { group:'paper', key:'paperSheetWid', label:'용지 폭(mm)', type:'mm' },
   { group:'paper', key:'paperCuts', label:'용지 절수', type:'int', default:1 },
@@ -58,23 +59,27 @@ const FIELD_DEFS = [
   { group:'print', key:'printUnitPrice', label:'인쇄단가', type:'money', default:0 },
   { group:'print', key:'pressType', label:'인쇄기종류', type:'select', options:['대국전','하드롱','특하드롱'], default:'대국전' },
 
-  // POST/ETC
-  { group:'post', key:'machineCoating', label:'기계코팅', type:'money', default:0 },
-  { group:'post', key:'silkPrinting', label:'실크인쇄', type:'money', default:0 },
-  { group:'post', key:'emboss', label:'형압', type:'money', default:0 },
-  { group:'post', key:'foil', label:'금박', type:'money', default:0 },
-  { group:'post', key:'lamination', label:'합지', type:'money', default:0 },
-  { group:'post', key:'thomson', label:'톰슨', type:'money', default:0 },
-  { group:'post', key:'staple', label:'견철', type:'money', default:0 },
-  { group:'post', key:'paperPallet', label:'종이파렛트', type:'money', default:0 },
-  { group:'post', key:'loadingCost', label:'상차비', type:'money', default:0 },
-  { group:'post', key:'shipRegion', label:'운송지역', type:'text', placeholder:'예) 서울' },
-  { group:'post', key:'shipDrop', label:'하차지', type:'text', placeholder:'예) 강남' },
-  { group:'post', key:'shipTruck', label:'차종(톤수)', type:'select', options:['라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'] },
-  { group:'post', key:'manualUnload', label:'수작업하차', type:'select', options:['아니오','예'], default:'아니오' },
-  { group:'post', key:'mgmtRatePct', label:'일반관리비(%)', type:'percent', default:7 },
-  { group:'post', key:'profitRatePct', label:'이윤(%)', type:'percent', default:0 },
-  { group:'post', key:'plasticHandleCost', label:'플라스틱손잡이', type:'money', default:0 },
+  // COATING / POST-PROCESS (코팅/후가공)
+  { group:'coating', key:'machineCoating', label:'기계코팅', type:'money', default:0 },
+  { group:'coating', key:'silkPrinting', label:'실크인쇄', type:'money', default:0 },
+  { group:'coating', key:'emboss', label:'형압', type:'money', default:0 },
+  { group:'coating', key:'foil', label:'금박', type:'money', default:0 },
+  { group:'coating', key:'lamination', label:'합지', type:'money', default:0 },
+  { group:'coating', key:'thomson', label:'톰슨', type:'money', default:0 },
+  { group:'coating', key:'staple', label:'견철', type:'money', default:0 },
+  { group:'coating', key:'paperPallet', label:'종이파렛트', type:'money', default:0 },
+  { group:'coating', key:'plasticHandleCost', label:'플라스틱손잡이', type:'money', default:0 },
+
+  // SHIPPING (운송)
+  { group:'shipping', key:'loadingCost', label:'상차비', type:'money', default:0 },
+  { group:'shipping', key:'shipRegion', label:'운송지역', type:'text', placeholder:'예) 서울' },
+  { group:'shipping', key:'shipDrop', label:'하차지', type:'text', placeholder:'예) 강남' },
+  { group:'shipping', key:'shipTruck', label:'차종(톤수)', type:'select', options:['라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'] },
+  { group:'shipping', key:'manualUnload', label:'수작업하차', type:'select', options:['아니오','예'], default:'아니오' },
+
+  // ADMIN (관리비/이윤)
+  { group:'admin', key:'mgmtRatePct', label:'일반관리비(%)', type:'percent', default:7 },
+  { group:'admin', key:'profitRatePct', label:'이윤(%)', type:'percent', default:0 },
 ];
 
 // =====================
@@ -189,8 +194,8 @@ function fieldMatchesFilter(f, needle){
 
 function renderInputs(){
   const filter = (q('#fieldFilter')?.value || '').trim();
-  const groups = ['basic','paper','material','print','post'];
 
+  const groups = ['basic','paper','material','print','coating','shipping','admin'];
   for(const g of groups){
     const host = getGroupHost(g);
     if(host) host.innerHTML = '';
@@ -209,12 +214,10 @@ function renderInputs(){
     host.appendChild(inputCell);
   }
 
-  // 로스율 표시 동기화
   syncLossRateInputs();
 }
 
 function renderFieldControl(f){
-  // select
   if(f.type === 'select'){
     const s = el('select', {'data-key': f.key});
     for(const opt of (f.options||[])){
@@ -226,7 +229,6 @@ function renderFieldControl(f){
     return s;
   }
 
-  // select + custom input
   if(f.type === 'select+custom'){
     const wrap = el('div', {style:'display:grid;grid-template-columns:1fr;gap:6px;'});
     const selKey = f.key + '__sel';
@@ -242,7 +244,6 @@ function renderFieldControl(f){
     const customLabel = f.customLabel || '직접입력';
     const current = (state[f.key] ?? '').toString();
 
-    // 초기 상태 결정
     if(!current){
       sel.value = placeholder;
       inp.value = '';
@@ -252,7 +253,6 @@ function renderFieldControl(f){
       inp.value = current;
       inp.disabled = true;
     } else {
-      // 옵션에 없거나 직접입력 사용
       sel.value = customLabel;
       inp.value = current;
       inp.disabled = false;
@@ -292,7 +292,6 @@ function renderFieldControl(f){
     return wrap;
   }
 
-  // readonly computed (text)
   if(f.type === 'readonly-text' || f.readOnly){
     const i = el('input', {type:'text', readonly:'readonly', 'data-key': f.key});
     i.value = (f.key === 'lossRate1') ? fmtPercent2(state.lossRate1||0)
@@ -301,7 +300,6 @@ function renderFieldControl(f){
     return i;
   }
 
-  // percent UX: focus => number only, blur => 0.00%
   if(f.type === 'percent'){
     const i = el('input', {type:'text', 'data-key': f.key, inputmode:'decimal', placeholder:'0.00%'});
     const v = Number(state[f.key] ?? f.default ?? 0);
@@ -323,7 +321,6 @@ function renderFieldControl(f){
     return i;
   }
 
-  // money UX: focus => raw, blur => comma
   if(f.type === 'money'){
     const i = el('input', {type:'text', 'data-key': f.key, inputmode:'numeric', placeholder:'0'});
     const v = Number(state[f.key] ?? f.default ?? 0);
@@ -346,7 +343,7 @@ function renderFieldControl(f){
 
   // mm/int/text
   const i = el('input', {
-    type: (f.type==='text' ? 'text' : 'text'),
+    type: 'text',
     'data-key': f.key,
     inputmode: (f.type==='text' ? 'text' : 'numeric'),
     placeholder: f.placeholder || ''
@@ -361,7 +358,6 @@ function renderFieldControl(f){
 
   i.addEventListener('input', onFieldInput);
   i.addEventListener('blur', ()=>{
-    // 정리(정수형은 blur에서 반올림/정규화)
     if(f.type === 'int' || f.type === 'mm'){
       const n = toIntLoose(i.value);
       state[f.key] = n;
@@ -381,7 +377,6 @@ function onFieldInput(e){
   if(f.type === 'text'){
     state[key] = e.target.value;
   } else if(f.type === 'int' || f.type === 'mm'){
-    // 입력 중에는 느슨하게 숫자 저장(blur에서 정규화)
     state[key] = toNumLoose(e.target.value);
   } else {
     state[key] = e.target.value;
@@ -391,7 +386,7 @@ function onFieldInput(e){
 }
 
 // =====================
-// 6) Dev items (free inputs)
+// 6) Dev items (좌측 섹션)
 // =====================
 function uid(){
   return 'd'+Math.random().toString(16).slice(2)+Date.now().toString(16);
@@ -470,7 +465,6 @@ function safeCeil(x){ return Math.ceil(Number(x)||0); }
 function calcLossRates(){
   const qty = Number(state.qty)||0;
 
-  // 로스율(%) = (여유 장수 / 필요 장수) * 100
   const pCuts = Number(state.paperCuts)||0;
   const pSpare = Math.max(0, Number(state.lossQty)||0);
   const pNeedSheets = (qty>0 && pCuts>0) ? (qty/pCuts) : 0;
@@ -493,7 +487,6 @@ function syncLossRateInputs(){
 }
 
 function calcPaperCost(){
-  // mm 규격, 여유=장수
   const qty = Number(state.qty)||0;
   const cuts = Number(state.paperCuts)||0;
   const spareSheets = Math.max(0, Number(state.lossQty)||0);
@@ -508,7 +501,7 @@ function calcPaperCost(){
   const needSheets = (qty>0 && cuts>0) ? qty/cuts : 0;
   const totalSheets = safeCeil(needSheets + spareSheets);
 
-  const kgPerSheet = areaM2 * gsm / 1000; // gsm(g/m²) => kg
+  const kgPerSheet = areaM2 * gsm / 1000;
   const cost = totalSheets * kgPerSheet * kgPrice * (1 - discountRate);
 
   return isFinite(cost) ? cost : 0;
@@ -542,6 +535,8 @@ function calculateQuote(){
   // PROCESSING
   addItem(items, {group:'PROCESSING', name:'CTP', amount:(Number(state.ctpPlates)||0)*(Number(state.ctpUnitPrice)||0), sort:110});
   addItem(items, {group:'PROCESSING', name:'인쇄', amount:(Number(state.printUnitPrice)||0), sort:115});
+
+  // 코팅/후가공(입력 필드가 coating 그룹이지만 비용 그룹은 PROCESSING으로 합산)
   addItem(items, {group:'PROCESSING', name:'기계코팅', amount:(Number(state.machineCoating)||0), sort:120});
   addItem(items, {group:'PROCESSING', name:'실크인쇄', amount:(Number(state.silkPrinting)||0), sort:125});
   addItem(items, {group:'PROCESSING', name:'형압', amount:(Number(state.emboss)||0), sort:130});
@@ -549,6 +544,7 @@ function calculateQuote(){
   addItem(items, {group:'PROCESSING', name:'합지', amount:(Number(state.lamination)||0), sort:150});
   addItem(items, {group:'PROCESSING', name:'톰슨', amount:(Number(state.thomson)||0), sort:160});
   addItem(items, {group:'PROCESSING', name:'견철', amount:(Number(state.staple)||0), sort:170});
+  addItem(items, {group:'PROCESSING', name:'종이파렛트', amount:(Number(state.paperPallet)||0), sort:175});
   addItem(items, {group:'PROCESSING', name:'손잡이', amount:(Number(state.plasticHandleCost)||0), sort:190});
 
   // SHIPPING
@@ -565,7 +561,7 @@ function calculateQuote(){
     addItem(items, {group:'DEV', name: nm || '개발비', amount: amt, sort:800+idx});
   });
 
-  items.sort((a,b)=>a.sort-b.sort);
+  items.sort((a,b)=>(a.sort||0)-(b.sort||0));
 
   const base = sumGroup(items,'MATERIAL') + sumGroup(items,'PROCESSING') + sumGroup(items,'SHIPPING');
   const mgmtPct = Number(state.mgmtRatePct)||0;
@@ -574,7 +570,6 @@ function calculateQuote(){
   const profitAmount = base * (profitPct/100);
   const devSum = sumGroup(items,'DEV');
 
-  // MGMT/PROFIT as items
   if(mgmtAmount) items.push({group:'MGMT', name:`관리비(${fmtPercent2(mgmtPct)})`, amount: mgmtAmount, sort:900});
   if(profitAmount) items.push({group:'PROFIT', name:`이윤(${fmtPercent2(profitPct)})`, amount: profitAmount, sort:910});
 
@@ -595,7 +590,6 @@ function renderCalcGrid(){
   const items = res.items;
   const t = res.totals;
 
-  // TOTAL row
   {
     const tr = el('tr', {class:'sumrow'});
     tr.appendChild(el('td', {class:'emph'}, 'TOTAL'));
@@ -604,7 +598,6 @@ function renderCalcGrid(){
     tbody.appendChild(tr);
   }
 
-  // Summary
   const summary = [
     ['BASE', `base = 재료+가공+운송`, t.base],
     ['MGMT', `관리비 금액 (입력: ${fmtPercent2(Number(state.mgmtRatePct)||0)})`, t.mgmtAmount],
@@ -620,7 +613,6 @@ function renderCalcGrid(){
     tbody.appendChild(tr);
   }
 
-  // Items
   items
     .slice()
     .sort((a,b)=>(a.sort||0)-(b.sort||0))
@@ -738,7 +730,6 @@ function recalc(){
 }
 
 function wireUI(){
-  // section collapse
   document.addEventListener('click', (e)=>{
     const shd = e.target.closest('.section .shd');
     if(!shd) return;
@@ -786,7 +777,6 @@ function wireUI(){
     recalc();
   });
 
-  // filter
   q('#fieldFilter')?.addEventListener('input', ()=>{
     renderInputs();
   });
@@ -801,7 +791,7 @@ function wireUI(){
 // =====================
 (function boot(){
   initState();
-  loadState();     // 있으면 덮어씀
+  loadState();
   wireUI();
   renderInputs();
   renderTabs();
