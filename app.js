@@ -1,15 +1,20 @@
-/* Quote app.js
-   - 운송 하차지(shipDrop): select + 검색 input (대량 목록 UX)
-   - FIX: 운송지역(shipRegion) 입력 시 renderInputs()로 재렌더되며 포커스가 끊기던 문제 해결
-          -> 운송지역 변경 시 "하차지 목록만" 부분 갱신
+/* Quote app.js (stable)
+   - FIX: 입력 섹션(탭) 토글 먹통 방지(스크립트 완전/무오류)
+   - 운송: datalist(자동완성) 방식으로 복귀
+   - 운송 규칙:
+     (기본운송비) + (수작업하차 추가금) + (왕복/대기/경유/특별) = 총 운송금액
+     * 선택값 부족 시 자동/추가/총액은 0
+     * 기본운송비(수동입력) > 0 이면 기본운송비(자동) 표시값은 0
 */
 
-const APP_VERSION = "Quote-0.1.6";
+const APP_VERSION = "Quote-0.1.8";
 
-// ---------------------
-// Field defs
-// ---------------------
-// type: text | mm | int | money | percent | select | select+custom | readonly-text | readonly-money | shipdrop
+const STORAGE_KEY = "quote_state_v1";
+
+/** =========================
+ * 1) Field definitions
+ *  type: text | mm | int | money | percent | select | select+custom | datalist | readonly-text | readonly-money
+ * ========================= */
 const FIELD_DEFS = [
   // BASIC
   { group:'basic', key:'companyName', label:'업체명', type:'text', placeholder:'예) ○○상사' },
@@ -67,16 +72,14 @@ const FIELD_DEFS = [
   { group:'coating', key:'paperPallet', label:'종이파렛트', type:'money', default:0 },
   { group:'coating', key:'plasticHandleCost', label:'플라스틱손잡이', type:'money', default:0 },
 
-  // SHIPPING
-  { group:'shipping', key:'shipRegion', label:'운송지역', type:'text', placeholder:'예) 서울 / 경기도 / 인천 / 충남' },
-  { group:'shipping', key:'shipDrop', label:'하차지', type:'shipdrop', placeholder:'검색 후 선택' },
-
+  // SHIPPING (datalist)
+  { group:'shipping', key:'shipRegion', label:'운송지역', type:'datalist', placeholder:'예) 서울', optionsFn:getShipRegionOptions },
+  { group:'shipping', key:'shipDrop', label:'하차지', type:'datalist', placeholder:'예) 강서구 / 강서 / 중랑구 / 중랑', optionsFn:getShipDropOptions },
   { group:'shipping', key:'shipTruck', label:'차종(톤수)', type:'select',
     options:['다마스','라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'],
     default:'다마스'
   },
   { group:'shipping', key:'manualUnload', label:'수작업하차', type:'select', options:['아니오','예'], default:'아니오' },
-
   { group:'shipping', key:'shipBaseInput', label:'기본운송비(수동입력)', type:'money', default:0 },
   { group:'shipping', key:'shipBaseAuto', label:'기본운송비(자동)', type:'readonly-money', readOnly:true },
   { group:'shipping', key:'shipManualExtra', label:'수작업하차 추가금(자동)', type:'readonly-money', readOnly:true },
@@ -88,17 +91,22 @@ const FIELD_DEFS = [
   { group:'admin', key:'profitRatePct', label:'이윤(%)', type:'percent', default:0 },
 ];
 
-// ---------------------
-// State
-// ---------------------
-const STORAGE_KEY = "quote_state_v1";
+/** =========================
+ * 2) State
+ * ========================= */
 const state = { devItems: [] };
 
 function ensureDevItems(){ if(!Array.isArray(state.devItems)) state.devItems=[]; }
+
 function migrateState(){
+  // 예전 키 호환
   if(state.shipBaseInput == null && state.shipCostInput != null) state.shipBaseInput = state.shipCostInput;
   if(state.shipBaseAuto == null && state.shipCostAuto != null) state.shipBaseAuto = state.shipCostAuto;
+
+  // 잘못 저장된 값 교정
+  if(state.shipDrop === '중량') state.shipDrop = '중랑';
 }
+
 function initState(){
   for(const f of FIELD_DEFS){
     const k=f.key;
@@ -106,20 +114,33 @@ function initState(){
     state[k] = (f.default !== undefined) ? f.default : '';
   }
   ensureDevItems();
-  state.lossRate1=0; state.lossRate2=0;
-  state.shipBaseAuto=0; state.shipManualExtra=0; state.shipTotal=0;
+  state.lossRate1 = 0;
+  state.lossRate2 = 0;
+
+  // 운송 computed
+  state.shipBaseAuto = 0;
+  state.shipManualExtra = 0;
+  state.shipTotal = 0;
 }
+
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
 function loadState(){
   const saved = localStorage.getItem(STORAGE_KEY);
   if(!saved) return false;
-  try{ Object.assign(state, JSON.parse(saved)); ensureDevItems(); migrateState(); return true; }
-  catch(e){ return false; }
+  try{
+    Object.assign(state, JSON.parse(saved));
+    ensureDevItems();
+    migrateState();
+    return true;
+  }catch(e){
+    return false;
+  }
 }
 
-// ---------------------
-// DOM helpers
-// ---------------------
+/** =========================
+ * 3) DOM helpers
+ * ========================= */
 function el(tag, attrs={}, html=''){
   const e=document.createElement(tag);
   for(const [k,v] of Object.entries(attrs)){
@@ -134,9 +155,9 @@ function el(tag, attrs={}, html=''){
 function q(sel){ return document.querySelector(sel); }
 function qa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
 
-// ---------------------
-// Format/parse
-// ---------------------
+/** =========================
+ * 4) Format/parse
+ * ========================= */
 function toNumLoose(v){
   if(v==null) return 0;
   const s=String(v).replace(/[, ]/g,'').trim();
@@ -157,12 +178,13 @@ function mm2ToM2(lenMm,widMm){
   return (L>0&&W>0)?(L*W)/1e6:0;
 }
 function safeCeil(x){ return Math.ceil(Number(x)||0); }
-
-// ---------------------
-// Shipping index + UI data
-// ---------------------
-let _shippingIndex=null; // Map(region -> drops[])
 function norm(s){ return String(s||'').trim(); }
+
+/** =========================
+ * 5) Shipping options (datalist)
+ * ========================= */
+let _shippingIndex = null; // Map(region -> Set(drop))
+
 function normalizeRegionName(r){
   const t=norm(r);
   if(!t) return '';
@@ -178,11 +200,7 @@ function normalizeRegionName(r){
   if(t.includes('경북')) return '경북';
   return t;
 }
-function normalizeTruckName(truck){
-  const t=norm(truck);
-  if(t==='3.5광폭') return '3.5톤 광폭';
-  return t;
-}
+
 function buildShippingIndex(){
   const tbl=(window.REF_SAMPLE||{})['운송비'];
   const m=new Map();
@@ -191,62 +209,45 @@ function buildShippingIndex(){
     const region=norm(row[0]);
     const drop=norm(row[1]);
     if(!region||!drop) continue;
-    if(!m.has(region)) m.set(region, []);
-    m.get(region).push(drop);
-  }
-  for(const [k,arr] of m.entries()){
-    const uniq=Array.from(new Set(arr));
-    uniq.sort((a,b)=>a.localeCompare(b,'ko-KR'));
-    m.set(k, uniq);
+    if(!m.has(region)) m.set(region, new Set());
+    m.get(region).add(drop);
   }
   return m;
 }
+
 function getShippingIndex(){
   if(_shippingIndex) return _shippingIndex;
   _shippingIndex = buildShippingIndex();
   return _shippingIndex;
 }
-function getDropOptionsForRegion(region){
+
+function getShipRegionOptions(){
+  return Array.from(getShippingIndex().keys()).sort((a,b)=>a.localeCompare(b,'ko-KR'));
+}
+
+function getShipDropOptions(){
   const idx=getShippingIndex();
-  const r=normalizeRegionName(region);
-  return idx.get(r) || [];
+  const r=normalizeRegionName(state.shipRegion);
+  const set=idx.get(r);
+  if(!set) return [];
+  return Array.from(set).sort((a,b)=>a.localeCompare(b,'ko-KR'));
 }
 
-// 하차지(select) 옵션만 부분 갱신 (운송지역 입력 끊김 방지)
-function refreshShipDropOptions({ clearSelection=false } = {}){
-  const search = q('[data-key="shipDrop__search"]');
-  const sel = q('[data-key="shipDrop"]');
-  if(!search || !sel) return;
-
-  const opts = getDropOptionsForRegion(state.shipRegion);
-  const needle = norm(search.value);
-
-  if(clearSelection){
-    state.shipDrop = '';
-    sel.value = '';
+// shipRegion 바뀌면 shipDrop datalist만 갱신(전체 rerender 금지)
+function refreshShipDropDatalist(){
+  const dl = q('#dl_shipDrop');
+  if(!dl) return;
+  dl.innerHTML = '';
+  for(const o of getShipDropOptions()){
+    dl.appendChild(el('option', {value:o}));
   }
-
-  sel.innerHTML = '';
-  sel.appendChild(el('option', {value:''}, '하차지 선택'));
-
-  let filtered = opts;
-  if(needle){
-    filtered = opts.filter(x=>x.includes(needle));
-  }
-
-  filtered.slice(0, 800).forEach(o=>{
-    sel.appendChild(el('option', {value:o}, o));
-  });
-
-  // selection 유지
-  const cur = String(state.shipDrop ?? '');
-  if(cur && filtered.includes(cur)) sel.value = cur;
 }
 
-// ---------------------
-// Render inputs
-// ---------------------
+/** =========================
+ * 6) Render inputs
+ * ========================= */
 function getGroupHost(group){ return q(`#group_${group}`); }
+
 function fieldMatchesFilter(f, needle){
   if(!needle) return true;
   const t=needle.toLowerCase();
@@ -276,9 +277,7 @@ function renderInputs(){
     host.appendChild(cell);
   }
 
-  // 최초 렌더 후 하차지 목록 1회 갱신(지역 값이 있으면)
-  refreshShipDropOptions({clearSelection:false});
-
+  refreshShipDropDatalist();
   syncLossRateInputs();
   syncShippingReadonlyFields();
 }
@@ -296,7 +295,6 @@ function renderFieldControl(f){
     const wrap=el('div',{style:'display:grid;grid-template-columns:1fr;gap:6px;'});
     const sel=el('select', {'data-key': f.key+'__sel'});
     for(const opt of (f.options||[])) sel.appendChild(el('option',{value:opt},opt));
-
     const inp=el('input',{type:'text', placeholder:f.placeholder||'', 'data-key':f.key});
 
     const placeholder=f.placeholder || (f.options?f.options[0]:'');
@@ -320,13 +318,35 @@ function renderFieldControl(f){
       }
       inp.disabled=true; inp.value=sel.value; state[f.key]=sel.value; recalc();
     });
-
     inp.addEventListener('input', ()=>{
       if(sel.value===customLabel){ state[f.key]=inp.value; recalc(); }
     });
 
-    wrap.appendChild(sel);
-    wrap.appendChild(inp);
+    wrap.appendChild(sel); wrap.appendChild(inp);
+    return wrap;
+  }
+
+  if(f.type==='datalist'){
+    const wrap = el('div', {style:'display:grid;grid-template-columns:1fr;gap:6px;'});
+    const listId = `dl_${f.key}`;
+
+    const input = el('input', {
+      type:'text',
+      'data-key': f.key,
+      placeholder: f.placeholder || '',
+      list: listId
+    });
+    input.value = (state[f.key] ?? '').toString();
+    input.addEventListener('input', onFieldInput);
+
+    const dl = el('datalist', {id: listId});
+    const opts = (typeof f.optionsFn === 'function') ? (f.optionsFn(state) || []) : (f.options || []);
+    for(const o of opts){
+      dl.appendChild(el('option', {value: o}));
+    }
+
+    wrap.appendChild(input);
+    wrap.appendChild(dl);
     return wrap;
   }
 
@@ -362,30 +382,9 @@ function renderFieldControl(f){
     return i;
   }
 
-  // shipdrop: 검색 input + select
-  if(f.type==='shipdrop'){
-    const wrap = el('div', {style:'display:grid;grid-template-rows:auto auto;gap:6px;'});
-    const search = el('input', {type:'text', placeholder:'하차지 검색', value:'', 'data-key':'shipDrop__search'});
-    const sel = el('select', {'data-key': f.key});
-
-    search.addEventListener('input', ()=>{
-      refreshShipDropOptions({clearSelection:false});
-    });
-
-    sel.addEventListener('change', ()=>{
-      state.shipDrop = sel.value;
-      recalc();
-    });
-
-    wrap.appendChild(search);
-    wrap.appendChild(sel);
-    return wrap;
-  }
-
-  // default text/mm/int
+  // mm/int/text default
   const i=el('input',{type:'text','data-key':f.key,inputmode:(f.type==='text'?'text':'numeric'),placeholder:f.placeholder||''});
   const v=state[f.key];
-
   if(f.type==='int' || f.type==='mm'){
     i.value = (v==null||v==='')?'':String(Math.round(Number(v)));
     i.addEventListener('input', onFieldInput);
@@ -399,7 +398,6 @@ function renderFieldControl(f){
     i.value = String(v ?? '');
     i.addEventListener('input', onFieldInput);
   }
-
   return i;
 }
 
@@ -408,7 +406,7 @@ function onFieldInput(e){
   const f=FIELD_DEFS.find(x=>x.key===key);
   if(!f) return;
 
-  if(f.type==='text'){
+  if(f.type==='text' || f.type==='datalist'){
     state[key]=e.target.value;
   }else if(f.type==='int' || f.type==='mm'){
     state[key]=toNumLoose(e.target.value);
@@ -416,26 +414,35 @@ function onFieldInput(e){
     state[key]=e.target.value;
   }
 
-  // 핵심 FIX: 운송지역은 전체 렌더 X, 하차지 옵션만 갱신
+  // 운송지역 변경 시: 하차지 초기화 + datalist만 갱신
   if(key==='shipRegion'){
+    state.shipRegion = e.target.value;
     state.shipDrop = '';
-    const search = q('[data-key="shipDrop__search"]');
-    if(search) search.value = '';
-    refreshShipDropOptions({clearSelection:true});
+    const dropEl = q('[data-key="shipDrop"]');
+    if(dropEl) dropEl.value = '';
+    refreshShipDropDatalist();
+  }
+
+  // 하차지에 잘못 입력된 "중량"은 즉시 교정
+  if(key==='shipDrop' && state.shipDrop === '중량'){
+    state.shipDrop = '중랑';
+    e.target.value = '중랑';
   }
 
   recalc();
 }
 
-// ---------------------
-// Dev items
-// ---------------------
+/** =========================
+ * 7) Dev items (좌측 개발비 섹션)
+ * ========================= */
 function uid(){ return 'd'+Math.random().toString(16).slice(2)+Date.now().toString(16); }
+
 function renderDevPanel(){
   ensureDevItems();
   const host=q('#devList');
   if(!host) return;
   host.innerHTML='';
+
   state.devItems.forEach((it, idx)=>{
     const row=el('div',{style:'display:grid;grid-template-columns:1.2fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px;'});
     const name=el('input',{type:'text',placeholder:'항목명 (예: 샘플비)',value:it.name||''});
@@ -453,9 +460,9 @@ function renderDevPanel(){
   });
 }
 
-// ---------------------
-// Loss rates
-// ---------------------
+/** =========================
+ * 8) Loss rates
+ * ========================= */
 function calcLossRates(){
   const qty=Number(state.qty)||0;
 
@@ -472,51 +479,75 @@ function calcLossRates(){
   if(!isFinite(state.lossRate1)) state.lossRate1=0;
   if(!isFinite(state.lossRate2)) state.lossRate2=0;
 }
+
 function syncLossRateInputs(){
   const a=q("[data-key='lossRate1']"); if(a) a.value=fmtPercent2(state.lossRate1||0);
   const b=q("[data-key='lossRate2']"); if(b) b.value=fmtPercent2(state.lossRate2||0);
 }
 
-// ---------------------
-// Shipping calc
-// ---------------------
+/** =========================
+ * 9) Shipping calc
+ * ========================= */
+// 운송비 표 값 단위: 만원(4.5 => 45,000원)
 function normalizeShippingTableValue(v){
   const n=Number(v);
   if(!isFinite(n) || n<=0) return 0;
   if(n>=1000) return Math.round(n);
-  return Math.round(n*10000); // 만원 → 원
+  return Math.round(n*10000);
 }
+
+function normalizeTruckName(truck){
+  const t=norm(truck);
+  if(t==='3.5광폭') return '3.5톤 광폭';
+  return t;
+}
+
 function findShippingRow(region, drop){
   const tbl=(window.REF_SAMPLE||{})['운송비'];
   if(!tbl || !Array.isArray(tbl.rows)) return null;
+
   const r=normalizeRegionName(region);
   const d=norm(drop);
-  if(!r) return null;
+  if(!r || !d) return null;
 
+  // 1) region exact + drop includes
   for(const row of tbl.rows){
     const rr=norm(row[0]);
     const rd=norm(row[1]);
-    if(rr===r && d && rd && d.includes(rd)) return row;
+    if(rr===r && rd && d.includes(rd)) return row;
   }
+  // 2) region only (fallback)
   for(const row of tbl.rows){
     const rr=norm(row[0]);
     if(rr===r) return row;
   }
   return null;
 }
+
 function lookupBaseShippingAuto(){
   const tbl=(window.REF_SAMPLE||{})['운송비'];
   if(!tbl) return 0;
+
+  const region = normalizeRegionName(state.shipRegion);
+  const drop = norm(state.shipDrop);
+  const truck = normalizeTruckName(state.shipTruck);
+
+  if(!region || !drop || !truck) return 0;
+
   const head=tbl.head||[];
-  const truck=normalizeTruckName(state.shipTruck);
   const idx=head.indexOf(truck);
   if(idx<0) return 0;
-  const row=findShippingRow(state.shipRegion, state.shipDrop);
+
+  const row=findShippingRow(region, drop);
   if(!row) return 0;
+
   return normalizeShippingTableValue(row[idx]);
 }
+
 function manualUnloadExtraFee(truck){
   const t=normalizeTruckName(truck);
+  if(!t) return 0;
+
   if(t==='다마스') return 0;
   if(t==='라보' || t==='1톤' || t==='1.4톤') return 20000;
   if(t==='2.5톤' || t==='3.5톤' || t==='3.5톤 광폭') return 40000;
@@ -524,31 +555,42 @@ function manualUnloadExtraFee(truck){
   if(t==='11톤') return 80000;
   return 0;
 }
+
 function calcShipping(){
-  const baseAuto=lookupBaseShippingAuto();
-  state.shipBaseAuto=baseAuto;
+  const baseInput = Math.max(0, Number(state.shipBaseInput)||0);
 
-  const baseInput=Number(state.shipBaseInput)||0;
-  const baseUsed=(baseInput>0)?baseInput:baseAuto;
+  // 자동 기본운송비는 입력/선택이 부족하면 0
+  const baseAutoRaw = lookupBaseShippingAuto();
 
-  const manualExtra=(String(state.manualUnload||'')==='예') ? manualUnloadExtraFee(state.shipTruck) : 0;
-  state.shipManualExtra=manualExtra;
+  // 요청: 수동입력(>0)이면 자동칸은 0 표시
+  state.shipBaseAuto = (baseInput > 0) ? 0 : baseAutoRaw;
 
-  const specialExtra=Math.max(0, Number(state.shipSpecialExtra)||0);
-  const total=baseUsed + manualExtra + specialExtra;
-  state.shipTotal=total;
+  // 실제 적용 기본운송비
+  const baseUsed = (baseInput > 0) ? baseInput : baseAutoRaw;
 
-  return {baseAuto, baseUsed, manualExtra, specialExtra, total};
+  const manualExtra = (String(state.manualUnload||'')==='예')
+    ? manualUnloadExtraFee(state.shipTruck)
+    : 0;
+  state.shipManualExtra = manualExtra;
+
+  const specialExtra = Math.max(0, Number(state.shipSpecialExtra)||0);
+
+  // 선택값이 부족해 baseAutoRaw가 0이고 baseInput도 0이면 총액은 0
+  const total = baseUsed + manualExtra + specialExtra;
+  state.shipTotal = total;
+
+  return { baseAutoRaw, baseUsed, manualExtra, specialExtra, total };
 }
+
 function syncShippingReadonlyFields(){
   const a=q("[data-key='shipBaseAuto']"); if(a) a.value=fmtMoney(state.shipBaseAuto ?? 0);
   const b=q("[data-key='shipManualExtra']"); if(b) b.value=fmtMoney(state.shipManualExtra ?? 0);
   const c=q("[data-key='shipTotal']"); if(c) c.value=fmtMoney(state.shipTotal ?? 0);
 }
 
-// ---------------------
-// Costs
-// ---------------------
+/** =========================
+ * 10) Costs (paper/material)
+ * ========================= */
 function calcPaperCost(){
   const qty=Number(state.qty)||0;
   const cuts=Number(state.paperCuts)||0;
@@ -566,6 +608,7 @@ function calcPaperCost(){
   const cost=sheets*kgPerSheet*kgPrice*(1-(discount/100));
   return isFinite(cost)?cost:0;
 }
+
 function calcMaterialCost(){
   const qty=Number(state.qty)||0;
   const cuts=Number(state.materialCuts)||0;
@@ -580,9 +623,9 @@ function calcMaterialCost(){
   return isFinite(cost)?cost:0;
 }
 
-// ---------------------
-// Quote calc
-// ---------------------
+/** =========================
+ * 11) Quote engine
+ * ========================= */
 function roundWon(x){ return Math.round(Number(x)||0); }
 function addItem(items, it){ const amt=Number(it.amount)||0; if(amt===0) return; items.push({...it, amount:amt}); }
 function sumGroup(items, g){ return items.filter(x=>x.group===g).reduce((a,b)=>a+(Number(b.amount)||0),0); }
@@ -591,8 +634,8 @@ function calculateQuote(){
   const items=[];
   ensureDevItems();
 
-  addItem(items,{group:'MATERIAL',name:'용지',amount:calcPaperCost(),sort:10,note:'(시트수×kg/시트×kg단가×(1-할인))'});
-  addItem(items,{group:'MATERIAL',name:'원단',amount:calcMaterialCost(),sort:20,note:'(시트수×m²×m²단가)'});
+  addItem(items,{group:'MATERIAL',name:'용지',amount:calcPaperCost(),sort:10});
+  addItem(items,{group:'MATERIAL',name:'원단',amount:calcMaterialCost(),sort:20});
 
   addItem(items,{group:'PROCESSING',name:'CTP',amount:(Number(state.ctpPlates)||0)*(Number(state.ctpUnitPrice)||0),sort:110});
   addItem(items,{group:'PROCESSING',name:'인쇄',amount:(Number(state.printUnitPrice)||0),sort:115});
@@ -607,7 +650,7 @@ function calculateQuote(){
   addItem(items,{group:'PROCESSING',name:'손잡이',amount:(Number(state.plasticHandleCost)||0),sort:190});
 
   const ship=calcShipping();
-  addItem(items,{group:'SHIPPING',name:'기본운송비',amount:ship.baseUsed,sort:310,note:'(수동입력 0이면 표 자동)'});
+  addItem(items,{group:'SHIPPING',name:'기본운송비',amount:ship.baseUsed,sort:310});
   addItem(items,{group:'SHIPPING',name:'수작업하차 추가금',amount:ship.manualExtra,sort:315});
   addItem(items,{group:'SHIPPING',name:'왕복/대기/경유/특별',amount:ship.specialExtra,sort:320});
 
@@ -631,9 +674,9 @@ function calculateQuote(){
   return {items, totals:{base, mgmtAmount, profitAmount, devSum, sellTotal}};
 }
 
-// ---------------------
-// Render calc grid & ratios
-// ---------------------
+/** =========================
+ * 12) Render calc + ratios + refs
+ * ========================= */
 function renderCalcGrid(){
   const tbody=q('#calcGrid tbody');
   if(!tbody) return;
@@ -666,8 +709,7 @@ function renderCalcGrid(){
   items.slice().sort((a,b)=>(a.sort||0)-(b.sort||0)).forEach(it=>{
     const tr=el('tr');
     tr.appendChild(el('td',{class:'emph'},it.group));
-    const note=it.note?` <span class="ro" style="opacity:.7">${it.note}</span>`:'';
-    tr.appendChild(el('td',{},`<span class="ro">${it.name}</span>${note}`));
+    tr.appendChild(el('td',{},`<span class="ro">${it.name}</span>`));
     tr.appendChild(el('td',{class:'num ro'},fmtMoney(roundWon(it.amount))));
     tbody.appendChild(tr);
   });
@@ -700,9 +742,6 @@ function renderRatios(){
   const s=q('#ratioSum'); if(s) s.textContent=`합계: ${sum.toFixed(2)}%`;
 }
 
-// ---------------------
-// Reference tabs (basic)
-// ---------------------
 function renderTabs(){
   const bar=q('#tabbar'); if(!bar) return;
   bar.innerHTML='';
@@ -717,6 +756,7 @@ function renderTabs(){
   });
   if(sheets[0]) activateTab(sheets[0].key);
 }
+
 function activateTab(key){
   qa('.tab').forEach(t=>t.classList.toggle('active', t.getAttribute('data-key')===key));
   const tbl=(window.REF_SAMPLE||{})[key];
@@ -735,9 +775,9 @@ function activateTab(key){
   });
 }
 
-// ---------------------
-// Misc UI
-// ---------------------
+/** =========================
+ * 13) UI wiring
+ * ========================= */
 function updateCompanyPrint(){
   const host=q('#companyPrint'); if(!host) return;
   const name=String(state.companyName||'').trim();
@@ -759,6 +799,7 @@ function recalc(){
 }
 
 function wireUI(){
+  // 섹션 열기/닫기
   document.addEventListener('click',(e)=>{
     const shd=e.target.closest('.section .shd');
     if(!shd) return;
@@ -766,7 +807,7 @@ function wireUI(){
     const sbd=sec.querySelector('.sbd');
     const open=sec.getAttribute('data-open')==='1';
     sec.setAttribute('data-open', open?'0':'1');
-    sbd.style.display = open?'none':'block';
+    if(sbd) sbd.style.display = open?'none':'block';
   });
 
   q('#btnReset')?.addEventListener('click',()=>{
@@ -777,10 +818,16 @@ function wireUI(){
   });
 
   q('#btnSave')?.addEventListener('click',()=>{ saveState(); alert('임시저장 완료(로컬)'); });
+
   q('#btnLoad')?.addEventListener('click',()=>{
     const ok=loadState();
-    if(ok){ renderInputs(); recalc(); alert('불러오기 완료(로컬)'); }
-    else alert('저장된 데이터가 없습니다.');
+    if(ok){
+      renderInputs();
+      recalc();
+      alert('불러오기 완료(로컬)');
+    }else{
+      alert('저장된 데이터가 없습니다.');
+    }
   });
 
   q('#btnExport')?.addEventListener('click',()=>window.print());
@@ -803,9 +850,9 @@ function wireUI(){
   });
 }
 
-// ---------------------
-// Boot
-// ---------------------
+/** =========================
+ * 14) Boot
+ * ========================= */
 (function boot(){
   initState();
   loadState();
