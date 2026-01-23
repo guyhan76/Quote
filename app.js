@@ -1,17 +1,16 @@
 /* Quote app.js
-   목표(1차):
-   - FIELD_DEFS로 입력폼을 100% 생성(추가/변경 쉬움)
+   - 입력폼: FIELD_DEFS 기반 자동 생성(추가/변경 쉬움)
    - 입력 UX: percent(0.00%), money(콤마), select+custom 안정화, readonly 보호
-   - 중앙 계산/우측 비율/하단 참조표 기본 연결
-   - 좌측 섹션: 코팅/후가공, 운송, 관리비/이윤, 개발비 분리
+   - 자동계산: 재료+가공+운송(base) → 관리비/이윤 → 판매가
+   - 운송비: (입력값이 0이면) 참조표 기반 자동 계산 + 수작업하차 추가금
 */
 
-const APP_VERSION = "Quote-0.1.1";
+const APP_VERSION = "Quote-0.1.2";
 
 //
 // 1) Field definitions
 // group: basic | paper | material | print | coating | shipping | admin
-// type: text | mm | int | money | percent | select | select+custom | readonly-text
+// type: text | mm | int | money | percent | select | select+custom | readonly-text | readonly-money
 //
 const FIELD_DEFS = [
   // BASIC
@@ -74,8 +73,18 @@ const FIELD_DEFS = [
   { group:'shipping', key:'loadingCost', label:'상차비', type:'money', default:0 },
   { group:'shipping', key:'shipRegion', label:'운송지역', type:'text', placeholder:'예) 서울' },
   { group:'shipping', key:'shipDrop', label:'하차지', type:'text', placeholder:'예) 강남' },
-  { group:'shipping', key:'shipTruck', label:'차종(톤수)', type:'select', options:['라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'] },
+
+  // 차종에 다마스 추가
+  { group:'shipping', key:'shipTruck', label:'차종(톤수)', type:'select',
+    options:['다마스','라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'],
+    default:'다마스'
+  },
+
   { group:'shipping', key:'manualUnload', label:'수작업하차', type:'select', options:['아니오','예'], default:'아니오' },
+
+  // 운송비 입력(0이면 자동값 사용)
+  { group:'shipping', key:'shipCostInput', label:'운송비(입력, 0=자동)', type:'money', default:0 },
+  { group:'shipping', key:'shipCostAuto', label:'운송비(자동)', type:'readonly-money', readOnly:true },
 
   // ADMIN (관리비/이윤)
   { group:'admin', key:'mgmtRatePct', label:'일반관리비(%)', type:'percent', default:7 },
@@ -98,11 +107,13 @@ function ensureDevItems(){
 function initState(){
   for(const f of FIELD_DEFS){
     if(f.key === 'lossRate1' || f.key === 'lossRate2') continue;
+    if(f.key === 'shipCostAuto') continue;
     state[f.key] = (f.default !== undefined) ? f.default : '';
   }
   ensureDevItems();
   state.lossRate1 = 0;
   state.lossRate2 = 0;
+  state.shipCostAuto = 0;
 }
 
 function saveState(){
@@ -176,7 +187,7 @@ function mm2ToM2(lenMm, widMm){
 }
 
 // =====================
-// 5) Render inputs by FIELD_DEFS
+// 5) Render inputs
 // =====================
 function getGroupHost(group){
   return q(`#group_${group}`);
@@ -215,6 +226,7 @@ function renderInputs(){
   }
 
   syncLossRateInputs();
+  syncShippingAutoInput();
 }
 
 function renderFieldControl(f){
@@ -292,6 +304,12 @@ function renderFieldControl(f){
     return wrap;
   }
 
+  if(f.type === 'readonly-money'){
+    const i = el('input', {type:'text', readonly:'readonly', 'data-key': f.key});
+    i.value = fmtMoney(state[f.key] ?? 0);
+    return i;
+  }
+
   if(f.type === 'readonly-text' || f.readOnly){
     const i = el('input', {type:'text', readonly:'readonly', 'data-key': f.key});
     i.value = (f.key === 'lossRate1') ? fmtPercent2(state.lossRate1||0)
@@ -341,7 +359,6 @@ function renderFieldControl(f){
     return i;
   }
 
-  // mm/int/text
   const i = el('input', {
     type: 'text',
     'data-key': f.key,
@@ -434,20 +451,105 @@ function renderDevPanel(){
 }
 
 // =====================
-// 7) Quote engine (v1 simple)
+// 7) Shipping auto lookup + manual unload fee
 // =====================
-const MANUAL_UNLOAD_FEE_BY_TRUCK = {
-  '라보': 20000,
-  '1톤': 20000,
-  '1.4톤': 20000,
-  '2.5톤': 40000,
-  '3.5톤': 40000,
-  '3.5톤 광폭': 40000,
-  '5톤': 80000,
-  '5톤플': 80000,
-  '11톤': 100000,
-};
 
+// REF_SAMPLE['운송비'] 값이 4.5, 5, 6 같이 작게 들어온 경우가 많아 "만원"으로 가정
+// 값이 1000 이상이면 이미 원 단위로 간주
+function normalizeShippingTableValue(v){
+  const n = Number(v);
+  if(!isFinite(n) || n<=0) return 0;
+  if(n >= 1000) return Math.round(n);
+  return Math.round(n * 10000); // 만원 → 원
+}
+
+function normalizeText(s){
+  return String(s||'').trim();
+}
+
+function findShippingRow(region, drop){
+  const tbl = (window.REF_SAMPLE || {})['운송비'];
+  if(!tbl || !Array.isArray(tbl.rows)) return null;
+
+  const r = normalizeText(region);
+  const d = normalizeText(drop);
+
+  if(!r) return null;
+
+  // 1) region exact + drop includes (가장 흔한 방식)
+  for(const row of tbl.rows){
+    const rowRegion = normalizeText(row[0]);
+    const rowDrop = normalizeText(row[1]);
+    if(rowRegion === r && d && rowDrop && d.includes(rowDrop)) return row;
+  }
+
+  // 2) region exact만
+  for(const row of tbl.rows){
+    const rowRegion = normalizeText(row[0]);
+    if(rowRegion === r) return row;
+  }
+
+  return null;
+}
+
+function lookupShippingBaseCostFromTable(){
+  const truck = normalizeText(state.shipTruck);
+  const region = normalizeText(state.shipRegion);
+  const drop = normalizeText(state.shipDrop);
+
+  const tbl = (window.REF_SAMPLE || {})['운송비'];
+  if(!tbl) return 0;
+
+  const head = tbl.head || [];
+  const row = findShippingRow(region, drop);
+  if(!row) return 0;
+
+  // 컬럼 매핑: head에서 truck 명 찾기
+  const idx = head.indexOf(truck);
+  if(idx < 0) return 0;
+
+  return normalizeShippingTableValue(row[idx]);
+}
+
+function manualUnloadExtraFee(truck){
+  const t = normalizeText(truck);
+
+  // 요청 규칙:
+  // 다마스: 입력 금액과 동일(=추가 0)
+  if(t === '다마스') return 0;
+
+  if(t === '라보' || t === '1톤' || t === '1.4톤') return 20000;
+  if(t === '2.5톤' || t === '3.5톤' || t === '3.5톤 광폭') return 40000;
+  if(t === '5톤' || t === '5톤플') return 60000;
+  if(t === '11톤') return 80000;
+
+  return 0;
+}
+
+function calcShippingCosts(){
+  const inputBase = Number(state.shipCostInput)||0;
+  const autoBase = lookupShippingBaseCostFromTable();
+
+  state.shipCostAuto = autoBase;
+
+  // 실제 적용 base: 입력이 0보다 크면 입력 우선, 아니면 자동
+  const base = (inputBase > 0) ? inputBase : autoBase;
+
+  const extra = (String(state.manualUnload||'') === '예')
+    ? manualUnloadExtraFee(state.shipTruck)
+    : 0;
+
+  return { base, extra, total: base + extra };
+}
+
+function syncShippingAutoInput(){
+  const elAuto = q("[data-key='shipCostAuto']");
+  if(elAuto) elAuto.value = fmtMoney(state.shipCostAuto ?? 0);
+}
+
+// =====================
+// 8) Quote engine (v1 simple)
+// =====================
 function roundWon(x){ return Math.round(Number(x)||0); }
 
 function addItem(items, it){
@@ -536,7 +638,6 @@ function calculateQuote(){
   addItem(items, {group:'PROCESSING', name:'CTP', amount:(Number(state.ctpPlates)||0)*(Number(state.ctpUnitPrice)||0), sort:110});
   addItem(items, {group:'PROCESSING', name:'인쇄', amount:(Number(state.printUnitPrice)||0), sort:115});
 
-  // 코팅/후가공(입력 필드가 coating 그룹이지만 비용 그룹은 PROCESSING으로 합산)
   addItem(items, {group:'PROCESSING', name:'기계코팅', amount:(Number(state.machineCoating)||0), sort:120});
   addItem(items, {group:'PROCESSING', name:'실크인쇄', amount:(Number(state.silkPrinting)||0), sort:125});
   addItem(items, {group:'PROCESSING', name:'형압', amount:(Number(state.emboss)||0), sort:130});
@@ -548,10 +649,11 @@ function calculateQuote(){
   addItem(items, {group:'PROCESSING', name:'손잡이', amount:(Number(state.plasticHandleCost)||0), sort:190});
 
   // SHIPPING
+  const ship = calcShippingCosts();
   addItem(items, {group:'SHIPPING', name:'상차비', amount:(Number(state.loadingCost)||0), sort:310});
-  if(String(state.manualUnload||'') === '예'){
-    const fee = Number(MANUAL_UNLOAD_FEE_BY_TRUCK[String(state.shipTruck||'')] || 0);
-    addItem(items, {group:'SHIPPING', name:'수작업하차', amount: fee, sort:320});
+  addItem(items, {group:'SHIPPING', name:'운송비', amount: ship.base, sort:315, note:'(입력값 0이면 참조표 자동)'});
+  if(ship.extra){
+    addItem(items, {group:'SHIPPING', name:'수작업하차 추가', amount: ship.extra, sort:320});
   }
 
   // DEV (base 제외)
@@ -579,7 +681,7 @@ function calculateQuote(){
 }
 
 // =====================
-// 8) Render calc grid & ratios
+// 9) Render calc grid & ratios
 // =====================
 function renderCalcGrid(){
   const tbody = q('#calcGrid tbody');
@@ -658,7 +760,7 @@ function renderRatios(){
 }
 
 // =====================
-// 9) Reference tabs (basic)
+// 10) Reference tabs (basic)
 // =====================
 function renderTabs(){
   const bar = q('#tabbar');
@@ -704,7 +806,7 @@ function activateTab(key){
 }
 
 // =====================
-// 10) Misc UI actions
+// 11) Misc UI actions
 // =====================
 function updateCompanyPrint(){
   const host = q('#companyPrint');
@@ -722,6 +824,11 @@ function updateCompanyPrint(){
 function recalc(){
   calcLossRates();
   syncLossRateInputs();
+
+  // 운송 자동값 갱신
+  const ship = calcShippingCosts();
+  // ship.total은 계산 엔진에서 다시 쓰지만, auto 표시만 동기화
+  syncShippingAutoInput();
 
   updateCompanyPrint();
   renderDevPanel();
@@ -787,7 +894,7 @@ function wireUI(){
 }
 
 // =====================
-// 11) Boot
+// 12) Boot
 // =====================
 (function boot(){
   initState();
