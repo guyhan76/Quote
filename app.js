@@ -1,18 +1,19 @@
 /* Quote app.js
    - 입력폼: FIELD_DEFS 기반 자동 생성(추가/변경 쉬움)
-   - 입력 UX: percent(0.00%), money(콤마), select+custom 안정화, readonly 보호
+   - 입력 UX: percent(0.00%), money(콤마), datalist(자동완성) 지원, readonly 보호
    - 자동계산: 재료+가공+운송(base) → 관리비/이윤 → 판매가
    - 운송비(요청 반영):
      (기본운송비) + (수작업하차 추가금) + (왕복/대기/경유/특별) = 총 운송금액
      * 상차비 제거
+   - 하차지(shipDrop): 운송지역 기준 자동 목록/검색(자동완성)으로 입력 실수 최소화
 */
 
-const APP_VERSION = "Quote-0.1.3";
+const APP_VERSION = "Quote-0.1.4";
 
 //
 // 1) Field definitions
 // group: basic | paper | material | print | coating | shipping | admin
-// type: text | mm | int | money | percent | select | select+custom | readonly-text | readonly-money
+// type: text | mm | int | money | percent | select | select+custom | datalist | readonly-text | readonly-money
 //
 const FIELD_DEFS = [
   // BASIC
@@ -71,9 +72,10 @@ const FIELD_DEFS = [
   { group:'coating', key:'paperPallet', label:'종이파렛트', type:'money', default:0 },
   { group:'coating', key:'plasticHandleCost', label:'플라스틱손잡이', type:'money', default:0 },
 
-  // SHIPPING (운송) — 요청 반영 3단계+총합
-  { group:'shipping', key:'shipRegion', label:'운송지역', type:'text', placeholder:'예) 서울 / 경기도 / 인천 / 충남' },
-  { group:'shipping', key:'shipDrop', label:'하차지', type:'text', placeholder:'예) 강서, 양천, 강서구, 강서/양천' },
+  // SHIPPING (운송)
+  // 운송지역/하차지: datalist 자동완성(검색형)
+  { group:'shipping', key:'shipRegion', label:'운송지역', type:'datalist', placeholder:'예) 서울 / 경기도 / 인천', optionsFn: getShipRegionOptions },
+  { group:'shipping', key:'shipDrop', label:'하차지', type:'datalist', placeholder:'예) 강서, 양천, 강서구', optionsFn: getShipDropOptions },
 
   { group:'shipping', key:'shipTruck', label:'차종(톤수)', type:'select',
     options:['다마스','라보','1톤','1.4톤','2.5톤','3.5톤','3.5톤 광폭','5톤','5톤플','11톤'],
@@ -82,8 +84,8 @@ const FIELD_DEFS = [
 
   { group:'shipping', key:'manualUnload', label:'수작업하차', type:'select', options:['아니오','예'], default:'아니오' },
 
-  // 1) 기본운송비: 입력이 0이면 자동 사용
-  { group:'shipping', key:'shipBaseInput', label:'기본운송비(입력, 0=자동)', type:'money', default:0 },
+  // 1) 기본운송비: 수동입력(0이면 자동 사용)
+  { group:'shipping', key:'shipBaseInput', label:'기본운송비(수동입력)', type:'money', default:0 },
   { group:'shipping', key:'shipBaseAuto', label:'기본운송비(자동)', type:'readonly-money', readOnly:true },
 
   // 2) 수작업하차 추가금 (자동)
@@ -113,19 +115,16 @@ function ensureDevItems(){
   if(!Array.isArray(state.devItems)) state.devItems = [];
 }
 
-// 기존 버전(state 키) 마이그레이션(중요)
+// 기존 버전(state 키) 마이그레이션
 function migrateState(){
-  // v0.1.2: shipCostInput/shipCostAuto 키를 쓰던 사용자 데이터 호환
+  // v0.1.2: shipCostInput/shipCostAuto -> v0.1.3+ shipBaseInput/shipBaseAuto
   if(state.shipBaseInput == null && state.shipCostInput != null) state.shipBaseInput = state.shipCostInput;
   if(state.shipBaseAuto == null && state.shipCostAuto != null) state.shipBaseAuto = state.shipCostAuto;
-
-  // 상차비 제거: loadingCost가 남아있어도 계산에서 사용 안 함(그대로 둬도 무방)
 }
 
 function initState(){
   for(const f of FIELD_DEFS){
     const k = f.key;
-    // computed readOnly fields는 초기값만 넣고 저장/입력에서 제외
     if(['lossRate1','lossRate2','shipBaseAuto','shipManualExtra','shipTotal'].includes(k)) continue;
     state[k] = (f.default !== undefined) ? f.default : '';
   }
@@ -174,7 +173,7 @@ function q(sel){ return document.querySelector(sel); }
 function qa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
 
 // =====================
-// 4) Parsing/formatting (UX 핵심)
+// 4) Parsing/formatting (UX)
 // =====================
 function toNumLoose(v){
   if(v==null) return 0;
@@ -210,7 +209,67 @@ function mm2ToM2(lenMm, widMm){
 }
 
 // =====================
-// 5) Render inputs
+// 5) Shipping index for datalist options
+// =====================
+let _shippingIndex = null;
+
+function norm(s){ return String(s||'').trim(); }
+
+function normalizeRegionName(r){
+  const t = norm(r);
+  if(!t) return '';
+  if(t.includes('경기')) return '경기도';
+  if(t === '경기') return '경기도';
+  if(t.includes('서울')) return '서울';
+  if(t.includes('인천')) return '인천';
+  if(t.includes('강원')) return '강원도';
+  if(t.includes('충남')) return '충남';
+  if(t.includes('충북')) return '충북';
+  if(t.includes('전남')) return '전남';
+  if(t.includes('전북')) return '전북';
+  if(t.includes('경남')) return '경남';
+  if(t.includes('경북')) return '경북';
+  return t;
+}
+
+function buildShippingIndex(){
+  const tbl = (window.REF_SAMPLE || {})['운송비'];
+  const idx = new Map(); // region -> Set(drop)
+
+  if(!tbl || !Array.isArray(tbl.rows)) return idx;
+
+  for(const row of tbl.rows){
+    const region = norm(row[0]);
+    const drop = norm(row[1]);
+    if(!region || !drop) continue;
+    if(!idx.has(region)) idx.set(region, new Set());
+    idx.get(region).add(drop);
+  }
+  return idx;
+}
+
+function getShippingIndex(){
+  if(_shippingIndex) return _shippingIndex;
+  _shippingIndex = buildShippingIndex();
+  return _shippingIndex;
+}
+
+// datalist options: regions
+function getShipRegionOptions(){
+  const idx = getShippingIndex();
+  return Array.from(idx.keys()).sort((a,b)=>a.localeCompare(b,'ko-KR'));
+}
+
+// datalist options: drops by region
+function getShipDropOptions(){
+  const idx = getShippingIndex();
+  const r = normalizeRegionName(state.shipRegion);
+  if(!r || !idx.has(r)) return [];
+  return Array.from(idx.get(r)).sort((a,b)=>a.localeCompare(b,'ko-KR'));
+}
+
+// =====================
+// 6) Render inputs
 // =====================
 function getGroupHost(group){
   return q(`#group_${group}`);
@@ -327,6 +386,31 @@ function renderFieldControl(f){
     return wrap;
   }
 
+  // datalist(자동완성)
+  if(f.type === 'datalist'){
+    const wrap = el('div', {style:'display:grid;grid-template-columns:1fr;gap:6px;'});
+    const listId = `dl_${f.key}`;
+
+    const input = el('input', {
+      type:'text',
+      'data-key': f.key,
+      placeholder: f.placeholder || '',
+      list: listId
+    });
+    input.value = (state[f.key] ?? '').toString();
+    input.addEventListener('input', onFieldInput);
+
+    const dl = el('datalist', {id: listId});
+    const opts = (typeof f.optionsFn === 'function') ? (f.optionsFn(state) || []) : (f.options || []);
+    for(const o of opts){
+      dl.appendChild(el('option', {value: o}));
+    }
+
+    wrap.appendChild(input);
+    wrap.appendChild(dl);
+    return wrap;
+  }
+
   if(f.type === 'readonly-money'){
     const i = el('input', {type:'text', readonly:'readonly', 'data-key': f.key});
     i.value = fmtMoney(state[f.key] ?? 0);
@@ -414,7 +498,17 @@ function onFieldInput(e){
   const f = FIELD_DEFS.find(x=>x.key===key);
   if(!f) return;
 
-  if(f.type === 'text'){
+  // region 변경 시 drop 자동완성 목록이 바뀌므로 재렌더
+  if(key === 'shipRegion'){
+    state[key] = e.target.value;
+    // 지역이 바뀌면 기존 하차지가 불일치할 수 있어 비워주는 옵션(원하면 주석 해제)
+    // state.shipDrop = '';
+    renderInputs();
+    recalc();
+    return;
+  }
+
+  if(f.type === 'text' || f.type === 'datalist'){
     state[key] = e.target.value;
   } else if(f.type === 'int' || f.type === 'mm'){
     state[key] = toNumLoose(e.target.value);
@@ -426,7 +520,7 @@ function onFieldInput(e){
 }
 
 // =====================
-// 6) Dev items (좌측 섹션)
+// 7) Dev items (좌측 섹션)
 // =====================
 function uid(){
   return 'd'+Math.random().toString(16).slice(2)+Date.now().toString(16);
@@ -474,7 +568,7 @@ function renderDevPanel(){
 }
 
 // =====================
-// 7) Shipping: table lookup + manual unload fee + total
+// 8) Shipping: table lookup + manual unload fee + total
 // =====================
 
 // REF 운송비 표 값 단위: 만원(4.5 => 45,000원)
@@ -483,25 +577,6 @@ function normalizeShippingTableValue(v){
   if(!isFinite(n) || n<=0) return 0;
   if(n >= 1000) return Math.round(n);
   return Math.round(n * 10000); // 만원 → 원
-}
-
-function norm(s){ return String(s||'').trim(); }
-
-function normalizeRegionName(r){
-  const t = norm(r);
-  if(!t) return '';
-  if(t.includes('경기')) return '경기도';
-  if(t === '경기') return '경기도';
-  if(t.includes('서울')) return '서울';
-  if(t.includes('인천')) return '인천';
-  if(t.includes('강원')) return '강원도';
-  if(t.includes('충남')) return '충남';
-  if(t.includes('충북')) return '충북';
-  if(t.includes('전남')) return '전남';
-  if(t.includes('전북')) return '전북';
-  if(t.includes('경남')) return '경남';
-  if(t.includes('경북')) return '경북';
-  return t;
 }
 
 function normalizeTruckName(truck){
@@ -519,7 +594,7 @@ function findShippingRow(region, drop){
 
   if(!r) return null;
 
-  // 1) region exact + drop includes (best)
+  // 1) region exact + drop includes
   for(const row of tbl.rows){
     const rowRegion = norm(row[0]);
     const rowDrop = norm(row[1]);
@@ -554,14 +629,11 @@ function manualUnloadExtraFee(truck){
   const t = normalizeTruckName(truck);
 
   // 요청 규칙:
-  // 다마스: +0
   if(t === '다마스') return 0;
-
   if(t === '라보' || t === '1톤' || t === '1.4톤') return 20000;
   if(t === '2.5톤' || t === '3.5톤' || t === '3.5톤 광폭') return 40000;
   if(t === '5톤' || t === '5톤플') return 60000;
   if(t === '11톤') return 80000;
-
   return 0;
 }
 
@@ -578,7 +650,6 @@ function calcShipping(){
   state.shipManualExtra = manualExtra;
 
   const specialExtra = Math.max(0, Number(state.shipSpecialExtra)||0);
-  // state.shipSpecialExtra는 입력필드니까 그대로 둠
 
   const total = baseUsed + manualExtra + specialExtra;
   state.shipTotal = total;
@@ -596,7 +667,7 @@ function syncShippingReadonlyFields(){
 }
 
 // =====================
-// 8) Quote engine
+// 9) Quote engine
 // =====================
 function roundWon(x){ return Math.round(Number(x)||0); }
 
@@ -677,10 +748,8 @@ function calculateQuote(){
   ensureDevItems();
 
   // MATERIAL
-  const paperCost = calcPaperCost();
-  const materialCost = calcMaterialCost();
-  addItem(items, {group:'MATERIAL', name:'용지', amount: paperCost, sort:10, note:'(시트수×kg/시트×kg단가×(1-할인))'});
-  addItem(items, {group:'MATERIAL', name:'원단', amount: materialCost, sort:20, note:'(시트수×m²×m²단가)'});
+  addItem(items, {group:'MATERIAL', name:'용지', amount: calcPaperCost(), sort:10, note:'(시트수×kg/시트×kg단가×(1-할인))'});
+  addItem(items, {group:'MATERIAL', name:'원단', amount: calcMaterialCost(), sort:20, note:'(시트수×m²×m²단가)'});
 
   // PROCESSING
   addItem(items, {group:'PROCESSING', name:'CTP', amount:(Number(state.ctpPlates)||0)*(Number(state.ctpUnitPrice)||0), sort:110});
@@ -698,7 +767,7 @@ function calculateQuote(){
 
   // SHIPPING (3단계)
   const ship = calcShipping();
-  addItem(items, {group:'SHIPPING', name:'기본운송비', amount: ship.baseUsed, sort:310, note:'(입력 0이면 표 자동)'});
+  addItem(items, {group:'SHIPPING', name:'기본운송비', amount: ship.baseUsed, sort:310, note:'(수동입력 0이면 표 자동)'});
   addItem(items, {group:'SHIPPING', name:'수작업하차 추가금', amount: ship.manualExtra, sort:315});
   addItem(items, {group:'SHIPPING', name:'왕복/대기/경유/특별', amount: ship.specialExtra, sort:320});
 
@@ -729,7 +798,7 @@ function calculateQuote(){
 }
 
 // =====================
-// 9) Render calc grid & ratios
+// 10) Render calc grid & ratios
 // =====================
 function renderCalcGrid(){
   const tbody = q('#calcGrid tbody');
@@ -808,7 +877,7 @@ function renderRatios(){
 }
 
 // =====================
-// 10) Reference tabs (basic)
+// 11) Reference tabs (basic)
 // =====================
 function renderTabs(){
   const bar = q('#tabbar');
@@ -854,7 +923,7 @@ function activateTab(key){
 }
 
 // =====================
-// 11) Misc UI actions
+// 12) Misc UI actions
 // =====================
 function updateCompanyPrint(){
   const host = q('#companyPrint');
@@ -940,7 +1009,7 @@ function wireUI(){
 }
 
 // =====================
-// 12) Boot
+// 13) Boot
 // =====================
 (function boot(){
   initState();
