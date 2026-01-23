@@ -1,8 +1,10 @@
 /* Quote app.js
-   - 운송 하차지(shipDrop): select + 검색 input (대량 목록 UX 개선)
+   - 운송 하차지(shipDrop): select + 검색 input (대량 목록 UX)
+   - FIX: 운송지역(shipRegion) 입력 시 renderInputs()로 재렌더되며 포커스가 끊기던 문제 해결
+          -> 운송지역 변경 시 "하차지 목록만" 부분 갱신
 */
 
-const APP_VERSION = "Quote-0.1.5";
+const APP_VERSION = "Quote-0.1.6";
 
 // ---------------------
 // Field defs
@@ -192,7 +194,6 @@ function buildShippingIndex(){
     if(!m.has(region)) m.set(region, []);
     m.get(region).push(drop);
   }
-  // sort + unique
   for(const [k,arr] of m.entries()){
     const uniq=Array.from(new Set(arr));
     uniq.sort((a,b)=>a.localeCompare(b,'ko-KR'));
@@ -209,6 +210,37 @@ function getDropOptionsForRegion(region){
   const idx=getShippingIndex();
   const r=normalizeRegionName(region);
   return idx.get(r) || [];
+}
+
+// 하차지(select) 옵션만 부분 갱신 (운송지역 입력 끊김 방지)
+function refreshShipDropOptions({ clearSelection=false } = {}){
+  const search = q('[data-key="shipDrop__search"]');
+  const sel = q('[data-key="shipDrop"]');
+  if(!search || !sel) return;
+
+  const opts = getDropOptionsForRegion(state.shipRegion);
+  const needle = norm(search.value);
+
+  if(clearSelection){
+    state.shipDrop = '';
+    sel.value = '';
+  }
+
+  sel.innerHTML = '';
+  sel.appendChild(el('option', {value:''}, '하차지 선택'));
+
+  let filtered = opts;
+  if(needle){
+    filtered = opts.filter(x=>x.includes(needle));
+  }
+
+  filtered.slice(0, 800).forEach(o=>{
+    sel.appendChild(el('option', {value:o}, o));
+  });
+
+  // selection 유지
+  const cur = String(state.shipDrop ?? '');
+  if(cur && filtered.includes(cur)) sel.value = cur;
 }
 
 // ---------------------
@@ -243,6 +275,9 @@ function renderInputs(){
     cell.appendChild(renderFieldControl(f));
     host.appendChild(cell);
   }
+
+  // 최초 렌더 후 하차지 목록 1회 갱신(지역 값이 있으면)
+  refreshShipDropOptions({clearSelection:false});
 
   syncLossRateInputs();
   syncShippingReadonlyFields();
@@ -330,44 +365,17 @@ function renderFieldControl(f){
   // shipdrop: 검색 input + select
   if(f.type==='shipdrop'){
     const wrap = el('div', {style:'display:grid;grid-template-rows:auto auto;gap:6px;'});
-    const search = el('input', {type:'text', placeholder:'하차지 검색', value:''});
+    const search = el('input', {type:'text', placeholder:'하차지 검색', value:'', 'data-key':'shipDrop__search'});
     const sel = el('select', {'data-key': f.key});
 
-    function fillOptions(){
-      const opts = getDropOptionsForRegion(state.shipRegion);
-      const needle = norm(search.value);
-      sel.innerHTML = '';
-      sel.appendChild(el('option', {value:''}, '하차지 선택'));
-      let filtered = opts;
-
-      if(needle){
-        filtered = opts.filter(x=>x.includes(needle));
-      }
-      // 최대 너무 많을 때도 쓸만하게(필요시 조절)
-      filtered.slice(0, 500).forEach(o=>{
-        sel.appendChild(el('option', {value:o}, o));
-      });
-
-      // 기존 값 유지
-      const cur = String(state.shipDrop ?? '');
-      if(cur && filtered.includes(cur)) sel.value = cur;
-      else if(cur && !needle){
-        // needle 없고 목록에 cur가 있으면 유지
-        if(opts.includes(cur)) sel.value = cur;
-      }
-    }
-
     search.addEventListener('input', ()=>{
-      fillOptions();
+      refreshShipDropOptions({clearSelection:false});
     });
 
     sel.addEventListener('change', ()=>{
       state.shipDrop = sel.value;
       recalc();
     });
-
-    // 초기 채움
-    fillOptions();
 
     wrap.appendChild(search);
     wrap.appendChild(sel);
@@ -377,6 +385,7 @@ function renderFieldControl(f){
   // default text/mm/int
   const i=el('input',{type:'text','data-key':f.key,inputmode:(f.type==='text'?'text':'numeric'),placeholder:f.placeholder||''});
   const v=state[f.key];
+
   if(f.type==='int' || f.type==='mm'){
     i.value = (v==null||v==='')?'':String(Math.round(Number(v)));
     i.addEventListener('input', onFieldInput);
@@ -390,6 +399,7 @@ function renderFieldControl(f){
     i.value = String(v ?? '');
     i.addEventListener('input', onFieldInput);
   }
+
   return i;
 }
 
@@ -406,11 +416,12 @@ function onFieldInput(e){
     state[key]=e.target.value;
   }
 
-  // 운송지역이 바뀌면 하차지 선택 목록이 바뀌어야 하므로 입력폼 리렌더
+  // 핵심 FIX: 운송지역은 전체 렌더 X, 하차지 옵션만 갱신
   if(key==='shipRegion'){
-    // 선택해둔 하차지가 다른 지역이면 혼란이 생기므로 비우는 게 안전
     state.shipDrop = '';
-    renderInputs();
+    const search = q('[data-key="shipDrop__search"]');
+    if(search) search.value = '';
+    refreshShipDropOptions({clearSelection:true});
   }
 
   recalc();
