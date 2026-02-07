@@ -3050,7 +3050,7 @@ if(coatSelected){
 
     const colorPart = colorInfo ? `, 색상정보 "${colorInfo}"` : '';
 
-    return `플렉소인쇄 :"${pressType}", ${colors}도, `
+    return `"${pressType}", ${colors}도, `
       + `인쇄단가(1m²) ${money(unitPriceM2)} × 원단면적(m²) ${areaM2.toFixed(2)}`;
   }
 
