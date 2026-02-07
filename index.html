@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>박스견적계산기(전문가용)</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="./app.js"></script>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" href="/assets/icons/icon-192.png">
+  <script>
+    // PWA install prompt를 최대한 일찍 잡아 저장
+    window.__pwaDeferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.__pwaDeferredPrompt = e;
+      window.dispatchEvent(new Event('pwa:installable'));
+      console.log('[PWA] captured beforeinstallprompt (early)');
+    });
+  </script>
+  
+</head>
+
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <div class="title">박스견적계산기(전문가용)</div>
+  
+        <div class="hdr-lines" id="hdrLines">
+          <div class="hdr-flow" id="hdrFlow">좌측 입력 → 중앙 자동계산 → 우측 비율 · 하단 참조표(일부연동)</div>
+  
+          <div class="hdr-kv" id="hdrMetaLine1">소속(작성자) : <span id="hdrDept">-</span></div>
+          <div class="hdr-kv" id="hdrMetaline2">직책(작성자) : <span id="hdrJobTitle">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine3">이름(작성자) : <span id="hdrUserName">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine4">생성날짜 : <span id="hdrCreatedAt">-</span></div>
+  
+          <div class="hdr-kv" id="hdrCompanyLine">업체명 : <span id="hdrCompany">-</span></div>
+          <div class="hdr-kv" id="hdrProductLine">품명 : <span id="hdrProduct">-</span></div>
+        </div>
+      </div>
+  
+      <div class="actions">
+        <button class="btn" id="btnReset" type="button">초기화</button>
+        <button class="btn primary" id="btnSaveFile" type="button">저장</button>
+        <button class="btn" id="btnLoadFile" type="button">불러오기</button>
+        <button class="btn" id="btnPdf" type="button">PDF</button>
+        <button class="btn green" id="btnPrint" type="button">인쇄</button>
+        <input id="stateFileInput" type="file" accept=".json,application/json" style="display:none" />
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- LEFT -->
+      <section class="panel" id="leftPanel">
+        <div class="panel-hd">
+          <div class="h">정보입력</div>
+          <div class="hint" id="dirtyState">● 실시간반영</div>
+          <div class="subline" id="infoHeaderLine2">기본정보/원단/용지/플렉소.옵셋인쇄/코팅/후가공/관리비/이윤/개발비</div>
+        </div>
+
+        <div class="panel-bd">
+          <div class="filterbar">
+            <input id="fieldFilter" type="text" placeholder="필드 검색 (예: 원단, 용지, 코팅, 운송, 관리비)" />
+            <button id="btnClearFilter" class="btn" type="button">지우기</button>
+          </div>
+
+          <div class="section" data-open="1" data-group="basic">
+            <div class="shd"><strong>기본정보</strong><span>업체/품명/형태/규격/수량</span></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_basic"></div>
+              <!-- 기본정보 섹션 안 (예: <div class="ab-grid" id="group_basic"></div> 아래) -->
+<div class="box-preview" id="boxPreview">
+  <div class="box-preview-hd">
+    <strong>박스전개도 미리보기</strong>
+    <span id="boxPreviewLabel" class="muted">-</span>
+  </div>
+  <div class="box-preview-bd">
+    <img id="boxPreviewImg" alt="박스전개도 미리보기" />
+    <div id="boxPreviewEmpty" class="box-preview-empty">
+      박스형태를 선택하면 전개도 이미지가 표시됩니다.
+    </div>
+  </div>
+</div>
+
+            </div>
+          </div>
+
+          <div class="section" data-open="1" data-group="material">
+            <div class="shd"><strong>원단</strong><span>규격(mm)/단가/절수/여유/로스</span></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_material"></div>
+            </div>
+          </div>
+
+          <div class="section" data-open="1" data-group="paper">
+            <div class="shd"><strong>용지</strong><span>규격(mm)/평량/단가/절수/할인/여유/로스</span></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_paper"></div>
+            </div>
+          </div>
+
+<!-- FLEXO (플렉소인쇄) : 용지와 CTP/옵셋인쇄 사이 -->
+<div class="section" data-open="0" data-group="flexo">
+  <div class="shd"><strong>플렉소인쇄</strong><span>인쇄도수/색상/인쇄단가/기종</span></div>
+  <div class="sbd">
+    <div class="ab-grid" id="group_flexo"></div>
+  </div>
+</div>
+
+
+          <div class="section" data-open="0" data-group="print">
+            <div class="shd"><strong>CTP/옵셋인쇄</strong><span>판수/단가/인쇄단가/기종</span></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_print"></div>
+            </div>
+          </div>
+
+          <div class="section" data-open="0" data-group="coating">
+            <div class="shd"><strong>코팅/후가공</strong><span>코팅종류/후가공종류/후가공단가</span></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_coating"></div>
+            </div>
+          </div>
+
+          <div class="section" data-open="0" data-group="shipping">
+            <div class="shd"><strong>운송</strong><span>운송지역/차종/운송금액</span></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_shipping"></div>
+            </div>
+          </div>
+
+          <div class="section" data-open="0" data-group="admin">
+            <div class="shd"><strong>관리비/이윤</strong><span>관리비율/이윤율</span></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_admin"></div>
+            </div>
+          </div>
+
+          <div class="section" data-open="0" data-group="dev">
+            <div class="shd"><strong>개발비</strong><span>자유항목(판매가 포함)</span></div>
+            <div class="sbd" style="display:none">
+              <div id="devList"></div>
+              <div class="dev-actions">
+                <button class="btn" id="btnDevAdd" type="button">+ 항목 추가</button>
+                <button class="btn" id="btnDevClear" type="button">전체 삭제</button>
+              </div>
+              <div class="hint dev-hint">예: 샘플비 200,000 / 목형대 150,000</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CENTER -->
+      <section class="panel" id="centerPanel">
+        <div class="panel-hd">
+          <div class="h">자동계산</div>
+          <div class="hint" id="calcHeaderLine2">(재료+가공+운송) + (관리비/이윤) + (개발비포함) = 총금액</div>
+        </div>
+
+        <div class="panel-bd">
+          <div class="sheet">
+            <table class="grid" id="calcGrid">
+              <thead>
+                <tr>
+                  <th style="width:80px">구분</th>
+                  <th>항목/근거</th>
+                  <th style="width:70px; text-align:right">수량</th>
+                  <th style="width:70px; text-align:right">단가(원)</th>
+                  <th style="width:100px; text-align:right">금액(원)</th>
+                </tr>
+              </thead>
+              
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT -->
+      <section class="panel" id="rightPanel">
+        <div class="panel-hd">
+          <div class="h">구성비(판매가 기준)</div>
+          <div class="hint">● 실시간반영 · 0원 항목은 자동 숨김</div>
+        </div>
+
+        <div class="panel-bd">
+          <div class="break">
+            <div class="bhd">
+              <div class="t">판매가 구성비</div>
+              <div class="s" id="ratioSum">합계: -</div>
+            </div>
+
+            <div class="bbody">
+              <table class="grid" id="ratioTable">
+                <thead>
+                  <tr>
+                    <th style="width:80px">구분</th>
+                    <th style="width:80px; text-align:right">항목</th>
+                    <th style="width:55px; text-align:right">항목비율</th>
+                    <th style="width:55px; text-align:right">합계비율</th>
+                  </tr>
+                </thead>
+                <tbody id="ratioBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- REF -->
+    <section class="tabs">
+      <div class="tabbar" id="tabbar"></div>
+      <div class="tabpane">
+        <div class="refnote">하단 참조표 : 코팅, 운송비 검색/선택 → 입력칸 자동 연동.</div>
+        <div class="refwrap">
+          <table class="grid" id="refTable">
+            <thead><tr id="refHead"></tr></thead>
+            <tbody id="refBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <link rel="manifest" href="./manifest.webmanifest">
+  
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+          console.log('SW registered:', reg.scope);
+  
+          // SW가 활성화될 때까지 대기
+          await navigator.serviceWorker.ready;
+  
+          // ✅ 아직 controller가 없으면 "딱 1번만" 자동 새로고침
+          if (!navigator.serviceWorker.controller && !sessionStorage.getItem('__swReloadedOnce')) {
+            sessionStorage.setItem('__swReloadedOnce', '1');
+            location.reload();
+          }
+        } catch (err) {
+          console.error('SW register failed:', err);
+        }
+      });
+    }
+  </script>
+  
+  
+</body>
+</html>
