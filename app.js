@@ -231,7 +231,7 @@ const FIELD_DEFS = [
   { group:'paper', key:'paperTotalKg', label:'용지 총중량(kg)', type:'readonly-text', readOnly:true },
 
   // FLEXO PRINT (플렉소인쇄)
-  { group:'flexo', key:'flexoPrintColors', label:'인쇄도수', type:'float1', default:0 },
+  { group:'flexo', key:'flexoPrintColors', label:'인쇄도수', type:'int', default:0 },
   { group:'flexo', key:'flexoColorInfo', label:'색상정보', type:'text', placeholder:'예) 2도(먹/적), 1도(군청) 등' },
   { group:'flexo', key:'flexoUnitPriceM2', label:'인쇄단가(1m²)', type:'money', default:0 },
   { group:'flexo', key:'flexoDiecutter', label:'다이커터종류', type:'text', placeholder:'예) 손잡이홀더, 타공 등' },
