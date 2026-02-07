@@ -1,19 +1,23 @@
-const CACHE = 'box365-pwa-v2026-02-07'; // 수정할 때마다 꼭 바꾸기
+const CACHE = 'boxqoute-pwa-v2026-02-07'; // 수정할 때마다 꼭 변경
+
+const SCOPE_URL = self.registration.scope;          // https://.../boxqoute/
+const BASE = new URL(SCOPE_URL).pathname;           // /boxqoute/
+const U = (p) => new URL(p, SCOPE_URL).toString();  // scope 기준 절대 URL
+
 const CORE = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.webmanifest',
-  '/assets/icons/icon-192.png',
-  '/assets/icons/icon-512.png'
+  U('./'),
+  U('index.html'),
+  U('styles.css'),
+  U('app.js'),
+  U('manifest.webmanifest'),
+  U('assets/icons/icon-192.png'),
+  U('assets/icons/icon-512.png')
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     self.skipWaiting();
     const cache = await caches.open(CACHE);
-
     await Promise.allSettled(CORE.map(async (url) => {
       const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) await cache.put(url, res);
@@ -34,30 +38,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  // HTML(페이지 진입)은 network-first
+  // 페이지 진입(HTML)은 network-first: 구버전 고착으로 인한 백지/먹통 방지
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
       try {
         const fresh = await fetch(req, { cache: 'no-store' });
         const cache = await caches.open(CACHE);
-        cache.put('/index.html', fresh.clone());
+        await cache.put(U('index.html'), fresh.clone());
         return fresh;
       } catch {
         const cache = await caches.open(CACHE);
-        return (await cache.match('/index.html')) || Response.error();
+        return (await cache.match(U('index.html')))
+          || (await cache.match(U('./')))
+          || Response.error();
       }
     })());
     return;
   }
 
-  // 나머지 정적 자원은 cache-first
+  // 정적 자원은 cache-first
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req);
     if (cached) return cached;
 
     const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
+    if (res.ok) await cache.put(req, res.clone());
     return res;
   })());
 });
+
