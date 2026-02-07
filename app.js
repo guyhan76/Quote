@@ -2077,6 +2077,8 @@ function initState(){
   state.materialWidText = '0';
 
   state.createdAt = new Date().toISOString(); // 날짜+시간
+  state.__openGroups = ['basic']; // ✅ 기본정보만 오픈
+
 }
 
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -2086,6 +2088,7 @@ function loadState(){
   if(!saved) return false;
   try{
     Object.assign(state, JSON.parse(saved));
+    applyOpenGroupsFromState(); // ✅ 추가
 
     // 기본 보정
     if(state.shipIncludeMode == null) state.shipIncludeMode = '포함';
@@ -3043,7 +3046,7 @@ if(coatSelected){
 
   function basisFlexoPrint(){
     const pressType = String(state.flexoPressType||'').trim() || '-';
-    const colors = (Number(state.flexoPrintColors)||0).toFixed(1); // 참고용 표기만
+    const colors = Math.round(safe0(state.flexoPrintColors));  // ✅ 정수 표기
     const colorInfo = String(state.flexoColorInfo||'').trim();
 
     const qty = n0(state.qty);
@@ -3062,7 +3065,8 @@ if(coatSelected){
   function basisFlexoDiecutter(){
     const die = String(state.flexoDiecutter||'').trim() || '-';
     const amt = n0(state.flexoDiecutterUnitPrice);
-    return `플렉소 다이커터 : "${die}", 단가(통) ${money(amt)}`;
+    return `"${pressType}", ${colors}도, `
+  + `인쇄단가(1m²) ${money(unitPriceM2)} × 원단면적(m²) ${areaM2.toFixed(2)}`;
   }
 
 
@@ -4037,7 +4041,47 @@ function normalizeLoadedState(obj){
   if(obj.materialWidText == null) obj.materialWidText = '0';
 
   if(!Array.isArray(obj.devItems)) obj.devItems = [];
+  if (obj.flexoPrintColors != null) obj.flexoPrintColors = Math.round(Number(obj.flexoPrintColors) || 0);
+  if(!Array.isArray(obj.__openGroups)) obj.__openGroups = ['basic'];
+
   return obj;
+}
+const UI_GROUPS = ['basic','material','paper','flexo','print','coating','shipping','admin','dev'];
+
+function sectionElByGroup(group){
+  let anchor = null;
+  if(group === 'dev'){
+    anchor = q('#devList') || q('#btnDevAdd') || q('#btnDevClear');
+  }else{
+    anchor = q(`#group_${group}`);
+  }
+  return anchor ? anchor.closest('.section') : null;
+}
+
+function setGroupOpen(group, open){
+  const sec = sectionElByGroup(group);
+  if(!sec) return;
+  sec.setAttribute('data-open', open ? '1' : '0');
+  const sbd = sec.querySelector('.sbd');
+  if(sbd) sbd.style.display = open ? 'block' : 'none';
+}
+
+function captureOpenGroups(){
+  const out = [];
+  for(const g of UI_GROUPS){
+    const sec = sectionElByGroup(g);
+    if(sec && sec.getAttribute('data-open') === '1') out.push(g);
+  }
+  return out;
+}
+
+function applyOpenGroupsFromState(){
+  const arr = Array.isArray(state.__openGroups) ? state.__openGroups : null;
+  const openSet = new Set((arr && arr.length ? arr : ['basic']).map(String));
+
+  for(const g of UI_GROUPS){
+    setGroupOpen(g, openSet.has(g));
+  }
 }
 
 /** =========================
@@ -4059,8 +4103,11 @@ function wireUI(){
     const open = sec.getAttribute('data-open') === '1';
     sec.setAttribute('data-open', open ? '0' : '1');
     if(sbd) sbd.style.display = open ? 'none' : 'block';
+    state.__openGroups = captureOpenGroups(); // ✅ 열린 상태 저장
+    scheduleAutosave();     
   }, true);
-
+                   // ✅ 자동저장에 포함
+  
   // 참조탭
   const tabbar = q('#tabbar');
   if(tabbar){
@@ -4549,6 +4596,7 @@ table thead tr::after{
     wireUI();
     wireEnterToNextField();
     renderInputs();
+    applyOpenGroupsFromState();   // ✅ 추가
     renderTabs();
     ensureFooter();
     renderDevPanel();
