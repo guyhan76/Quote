@@ -2813,6 +2813,11 @@ function calcFlexoPrintCost(){
   return Math.round(qty * unit);       // 금액(원) = 수량 × 단가(원)
 }
 
+function formatDegree(v) {
+  if (v == null || Number.isNaN(v)) return '-';
+  return Number(v).toFixed(1).replace(/\.0$/, '');
+}
+
 function calcFlexoDiecutterCost(){
   const qty = safe0(state.qty);
   const unit = safe0(state.flexoDiecutterUnitPrice); // 다이커터단가(원/개)로 사용
