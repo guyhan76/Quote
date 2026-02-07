@@ -3064,10 +3064,13 @@ if(coatSelected){
 
   function basisFlexoDiecutter(){
     const die = String(state.flexoDiecutter||'').trim() || '-';
-    const amt = n0(state.flexoDiecutterUnitPrice);
-    return `"${pressType}", ${colors}도, `
-  + `인쇄단가(1m²) ${money(unitPriceM2)} × 원단면적(m²) ${areaM2.toFixed(2)}`;
+    const unitPrice = n0(state.flexoDiecutterUnitPrice);
+    const qty = n0(state.qty);
+    const amount = Math.round(qty * unitPrice);
+    return `"${die}", 단가 ${money(unitPrice)} × 수량 ${qty} = ${money(amount)}`;
   }
+  
+  
 
 
   function basisCTP(){

@@ -1,28 +1,39 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>박스견적계산기(전문가용)</title>
-  <link rel="stylesheet" href="./styles.css" />
-  <script defer src="./app.js"></script>
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0f172a">
-  <link rel="icon" href="/assets/icons/icon-192.png">
-  <script>
-    // PWA install prompt를 최대한 일찍 잡아 저장
-    window.__pwaDeferredPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      window.__pwaDeferredPrompt = e;
-      window.dispatchEvent(new Event('pwa:installable'));
-      console.log('[PWA] captured beforeinstallprompt (early)');
-    });
-  </script>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>박스견적계산기(전문가용)</title>
   
-</head>
+    <link rel="stylesheet" href="./styles.css" />
+  
+    <!-- PWA -->
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#0f172a">
+  
+    <!-- icons: 절대경로(/assets) 금지, 상대경로로 통일 -->
+    <link rel="icon" href="./assets/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  
+    <!-- (경고 제거용) -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+  
+    <!-- app.js는 딱 1번만 -->
+    <script defer src="./app.js?v=20260207-1"></script>
+  
+    <script>
+      // PWA install prompt를 최대한 일찍 잡아 저장
+      window.__pwaDeferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.__pwaDeferredPrompt = e;
+        window.dispatchEvent(new Event('pwa:installable'));
+        console.log('[PWA] captured beforeinstallprompt (early)');
+      });
+    </script>
+  </head>
+  
 
 <body>
   <div class="app">
@@ -230,24 +241,18 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
-        try {
-          const reg = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
-          console.log('[SW] registered', reg.scope);
+        const reg = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
+        await navigator.serviceWorker.ready;
   
-          await navigator.serviceWorker.ready;
-  
-          // 컨트롤러 확보를 위해 1회 리로드(선택이지만 추천)
-          if (!navigator.serviceWorker.controller && !sessionStorage.getItem('__swReloadedOnce')) {
-            sessionStorage.setItem('__swReloadedOnce', '1');
-            location.reload();
-          }
-        } catch (e) {
-          console.error('[SW] register failed', e);
+        if (!navigator.serviceWorker.controller && !sessionStorage.getItem('__swReloadedOnce')) {
+          sessionStorage.setItem('__swReloadedOnce', '1');
+          location.reload();
         }
       });
     }
   </script>
   
+
   
 </body>
 </html>
