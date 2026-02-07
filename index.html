@@ -6,7 +6,7 @@
   <title>박스견적계산기(전문가용)</title>
   <link rel="stylesheet" href="./styles.css" />
   <script defer src="./app.js"></script>
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f172a">
@@ -226,31 +226,27 @@
       </div>
     </section>
   </div>
-
-  <link rel="manifest" href="./manifest.webmanifest">
   
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
-        try {
-          const reg = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
-          console.log('SW registered:', reg.scope);
+        try {)
+          const reg = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
+          console.log('[SW] registered', reg.scope);
   
-          // SW가 활성화될 때까지 대기
           await navigator.serviceWorker.ready;
   
-          // ✅ 아직 controller가 없으면 "딱 1번만" 자동 새로고침
+          // 컨트롤러 확보를 위해 1회 리로드(선택이지만 추천)
           if (!navigator.serviceWorker.controller && !sessionStorage.getItem('__swReloadedOnce')) {
             sessionStorage.setItem('__swReloadedOnce', '1');
             location.reload();
           }
-        } catch (err) {
-          console.error('SW register failed:', err);
+        } catch (e) {
+          console.error('[SW] register failed', e);
         }
       });
     }
   </script>
-  
   
 </body>
 </html>
