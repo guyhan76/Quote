@@ -2251,6 +2251,78 @@ async function saveStateAsFileWithPicker(){
   return false;
 }
 
+function buildSharePayload(){
+  // 최신 계산값 반영(원하면 recalcLite() 호출해도 됨)
+  let res;
+  try { res = calculateQuote(); } catch(_) { res = null; }
+
+  const company = String(state.companyName || '').trim() || '-';
+  const item = String(state.itemName || '').trim() || '-';
+  const qty = Math.round(safe0(state.qty));
+  const qtyText = qty > 0 ? qty.toLocaleString('ko-KR') : '-';
+
+  const sellTotal = Math.round(Number(res?.totals?.sellTotal) || 0);
+  const unit = (qty > 0) ? Math.round(sellTotal / qty) : 0;
+
+  const title = `견적 공유 - ${company} / ${item}`;
+
+  const lines = [];
+  lines.push(`[견적] ${company} / ${item}`);
+  lines.push(`수량: ${qtyText}`);
+  lines.push(`총금액: ${fmtMoney(sellTotal)}원`);
+  lines.push(`개당: ${fmtMoney(unit)}원`);
+
+  // 비용 상위 몇 개만 요약(너무 길어지는 것 방지)
+  if(res?.items?.length){
+    const top = [...res.items]
+      .filter(x => Number(x.amount) > 0)
+      .sort((a,b)=>(Number(b.amount)||0)-(Number(a.amount)||0))
+      .slice(0, 6);
+
+    if(top.length){
+      lines.push('');
+      lines.push('상위 비용 항목:');
+      for(const it of top){
+        lines.push(`- ${it.name}: ${fmtMoney(it.amount)}원`);
+      }
+    }
+  }
+
+  // URL은 http/https일 때만 포함(파일로 열 때 방지)
+  const url = (location.protocol === 'http:' || location.protocol === 'https:') ? location.href : '';
+
+  const text = lines.join('\n');
+
+  // 상태 JSON 파일(공유 지원 시 files로 첨부)
+  const json = JSON.stringify(state, null, 2);
+  const fileName = `Quote_state_${new Date().toISOString().slice(0,10)}.json`;
+  const file = new File([json], fileName, { type: 'application/json' });
+
+  return { title, text, url, file };
+}
+
+async function copyToClipboardFallback(text){
+  // 1) Clipboard API 우선
+  if(navigator.clipboard?.writeText){
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  // 2) 구형 fallback
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  ta.style.top = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  return ok;
+}
+
+
 /** =========================
  * Box preview
  * ========================= */
@@ -2868,6 +2940,8 @@ function sumGroup(items, g){
 
 function ratioItemName(raw){
   const s = String(raw||'').trim();
+  if(s.startsWith('플렉소인쇄')) return '플렉소인쇄';
+  if(s.startsWith('플렉소 다이커터') || s.startsWith('플렉소다이커터')) return '플렉소 다이커터';
   if(s.startsWith('인쇄(')) return '인쇄';
   if(s.startsWith('코팅(') || s==='코팅') return '코팅';
   if(s.startsWith('접착(') || s==='접착') return '접착';
@@ -4128,6 +4202,38 @@ function wireUI(){
       editMyProfile();
     }
   }, true);
+
+  // 공유
+  q('#btnShare')?.addEventListener('click', async ()=>{
+    try{
+      // 최신값 반영이 필요하면 이 줄 활성화(선택)
+      // recalcLite();
+
+      const p = buildSharePayload();
+      const shareText = [p.text, p.url].filter(Boolean).join('\n\n');
+
+      if(navigator.share){
+        const data = { title: p.title, text: p.text };
+        if(p.url) data.url = p.url;
+
+        // 파일 공유가 되는 환경이면 JSON 첨부도 같이
+        if(navigator.canShare && navigator.canShare({ files: [p.file] })){
+          data.files = [p.file];
+        }
+
+        await navigator.share(data);
+        return;
+      }
+
+      // Web Share 미지원이면 클립보드 복사
+      await copyToClipboardFallback(shareText);
+      alert('공유 기능이 지원되지 않아 공유 내용을 클립보드에 복사했습니다.\n메신저/메일에 붙여넣기 하세요.');
+    }catch(err){
+      console.error('SHARE ERROR:', err);
+      alert('공유 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
+    }
+  });
+
 
   function doResetAll(){
     initState();
