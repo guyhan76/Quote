@@ -3707,8 +3707,8 @@ function renderRatios(){
   }
 
   const orderDef = [
-    { title:'직접재료비', merge:true, order:['용지','원단'] },
-    { title:'가공비', merge:true, order:['플렉소인쇄','플렉소다이커터','CTP','인쇄','코팅','실크인쇄','형압','박인쇄','합지','톰슨','창문접착','접착','견철','팔레트','손잡이'] },
+{ title:'가공비', merge:true, order:['플렉소인쇄','플렉소 다이커터','CTP','인쇄','코팅','실크인쇄','형압','박인쇄','합지','톰슨','창문접착','접착','견철','팔레트','손잡이'] },    { title:'직접재료비', merge:true, order:['용지','원단'] },
+    
     { title:'운송비', merge:true, order:['운송비'] },
     { title:'관리비', merge:false, order:['관리비'] },
     { title:'이윤', merge:false, order:['이윤'] },
