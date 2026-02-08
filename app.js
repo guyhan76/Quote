@@ -1,6 +1,47 @@
 /* Quote/app.js (clean & complete) */
 const APP_VERSION = "Quote-V3.0";
 const STORAGE_KEY = "quote_state_v1";
+window.APP_VERSION = APP_VERSION;
+window.STORAGE_KEY = STORAGE_KEY;
+const SAFE_MODE = new URLSearchParams(location.search).has('safe');
+// ===== BOOT FUSE / DIAG (must be near top) =====
+(function BOOT_FUSE_DIAG_V1(){
+  const qs = new URLSearchParams(location.search);
+  const DIAG = qs.has('diag') || SAFE_MODE;   // safe면 자동 diag
+  const HALT = qs.has('halt');                // ?halt=1 이면 강제 중단(제어권 회복용)
+
+  function paint(msg){
+    try {
+      const id = '__quote_diag__';
+      const el = document.getElementById(id) || (() => {
+        const d = document.createElement('div');
+        d.id = id;
+        d.style.cssText =
+          'position:fixed;z-index:2147483647;left:8px;top:8px;right:8px;' +
+          'background:#111;color:#0f0;padding:8px;font:12px/1.4 monospace;' +
+          'border:1px solid #0f0;white-space:pre-wrap;pointer-events:none;opacity:.95';
+        (document.body || document.documentElement).appendChild(d);
+        return d;
+      })();
+      el.textContent = msg;
+    } catch (_) {}
+  }
+
+  if (DIAG) {
+    paint(`[${APP_VERSION}] DIAG on\nSAFE_MODE=${SAFE_MODE}\nurl=${location.href}\nstep=top`);
+    // 1초 뒤에도 UI가 살아있으면 최소한 이벤트 루프는 돌고 있다는 뜻
+    setTimeout(() => paint(`[${APP_VERSION}] DIAG on\nSAFE_MODE=${SAFE_MODE}\nstep=top+1s (event loop ok)`), 1000);
+  }
+
+  if (HALT || (SAFE_MODE && qs.has('haltSafe'))) {
+    // ?halt=1 또는 ?safe=1&haltSafe=1 로 완전 중단(무한루프 탈출용)
+    if (DIAG) paint(`[${APP_VERSION}] HALTED by query\n(no boot executed)`);
+    throw new Error('Quote boot halted by BOOT_FUSE_DIAG_V1');
+  }
+
+  // safe 모드에서 "무거운 자동부팅"을 막기 위한 플래그
+  if (SAFE_MODE) window.__QUOTE_SAFE_NOAUTOBOOT__ = true;
+})();
 
 /** =========================
  * My profile (author) - localStorage (1회 입력)
@@ -2141,9 +2182,39 @@ function el(tag, attrs={}, html=''){
   return e;
 }
 
+function ensureShareButton(){
+  const actions = document.querySelector('.actions');
+  if(!actions){
+    console.warn('[Share] .actions not found');
+    return null;
+  }
+
+  let btn = document.getElementById('btnShare');
+  if(!btn){
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'btnShare';
+    btn.className = 'btn btn-share';
+    btn.textContent = '공유';
+    actions.appendChild(btn);
+  }
+  return btn;
+}
+
+
 /** =========================
  * Utils
  * ========================= */
+function safeStep(name, fn) {
+  try { return fn(); }
+  catch (e) {
+    console.error(`[${name}] failed:`, e);
+    window.__lastQuoteError = { name, message: String(e?.message || e), stack: e?.stack };
+    return undefined;
+  }
+}
+
+
 function safe0(x){ x=Number(x)||0; return isFinite(x)?x:0; }
 function round2(x){ x=Number(x)||0; return Math.round(x*100)/100; }
 
@@ -2301,27 +2372,38 @@ function buildSharePayload(){
   return { title, text, url, file };
 }
 
+
 async function copyToClipboardFallback(text){
-  // 1) Clipboard API 우선
-  if(navigator.clipboard?.writeText){
-    await navigator.clipboard.writeText(text);
-    return true;
+  // 1) Clipboard API (가능하면)
+  try{
+    if(window.isSecureContext && navigator.clipboard?.writeText){
+      await navigator.clipboard.writeText(String(text ?? ''));
+      return true;
+    }
+  }catch(e){
+    // NotAllowedError 포함 → 아래 fallback로 진행
+    console.warn('[Clipboard] writeText blocked:', e?.name, e?.message);
   }
 
-  // 2) 구형 fallback
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  ta.style.top = '0';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
-  const ok = document.execCommand('copy');
-  ta.remove();
-  return ok;
+  // 2) execCommand fallback
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = String(text ?? '');
+    ta.setAttribute('readonly','readonly');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return !!ok;
+  }catch(e){
+    console.warn('[Clipboard] execCommand failed:', e?.name, e?.message);
+    return false;
+  }
 }
-
 
 /** =========================
  * Box preview
@@ -3527,7 +3609,9 @@ function onFieldInput(e){
   }
 
   touchStamp();
-  recalc();
+  if(!SAFE_MODE){
+    recalc();
+  }
   scheduleAutosave();
 }
 
@@ -3781,14 +3865,14 @@ function renderRatios(){
   }
 
   const orderDef = [
-{ title:'가공비', merge:true, order:['플렉소인쇄','플렉소 다이커터','CTP','인쇄','코팅','실크인쇄','형압','박인쇄','합지','톰슨','창문접착','접착','견철','팔레트','손잡이'] },    { title:'직접재료비', merge:true, order:['용지','원단'] },
-    
+    { title:'직접재료비', merge:true, order:['용지','원단'] },
+    { title:'가공비', merge:true, order:['플렉소인쇄','플렉소 다이커터','CTP','인쇄','코팅','실크인쇄','형압','박인쇄','합지','톰슨','창문접착','접착','견철','팔레트','손잡이'] },
     { title:'운송비', merge:true, order:['운송비'] },
     { title:'관리비', merge:false, order:['관리비'] },
     { title:'이윤', merge:false, order:['이윤'] },
     { title:'개발비', merge:true, order:null },
   ];
-
+  
   let sumPct = 0;
 
   for(const g of orderDef){
@@ -4099,6 +4183,51 @@ function recalcLite(){
 
 }
 
+/* =========================
+ * RECLAC_THROTTLE_V1 (emergency)
+ * - make recalc/recalcLite run at most once per animation frame
+ * - prevents "typing impossible" due to heavy sync rendering
+ * ========================= */
+(function RECLAC_THROTTLE_V1(){
+  if (window.__RECLAC_THROTTLE_V1__) return;
+  window.__RECLAC_THROTTLE_V1__ = true;
+
+  const origRecalc = window.recalc;
+  const origRecalcLite = window.recalcLite;
+
+  let q1 = false, q2 = false;
+  let lastArgs1 = null, lastArgs2 = null;
+
+  window.recalc = function(...args){
+    lastArgs1 = args;
+    if (window.__PAUSE_RECALC__) return;
+    if (q1) return;
+    q1 = true;
+    requestAnimationFrame(() => {
+      q1 = false;
+      try { origRecalc && origRecalc.apply(this, lastArgs1 || []); }
+      catch(e){ console.error('[recalc throttled] error:', e); }
+    });
+  };
+
+  window.recalcLite = function(...args){
+    lastArgs2 = args;
+    if (window.__PAUSE_RECALC__) return;
+    if (q2) return;
+    q2 = true;
+    requestAnimationFrame(() => {
+      q2 = false;
+      try { origRecalcLite && origRecalcLite.apply(this, lastArgs2 || []); }
+      catch(e){ console.error('[recalcLite throttled] error:', e); }
+    });
+  };
+
+  // optional: quick kill switch you can toggle from address bar via console later
+  window.__PAUSE_RECALC__ = false;
+
+  console.log('[PATCH] RECLAC_THROTTLE_V1 applied');
+})();
+
 /** =========================
  * Load normalize (file import)
  * ========================= */
@@ -4161,17 +4290,110 @@ function applyOpenGroupsFromState(){
   }
 }
 
+
+function ensureShareButton(){
+  const actions = document.querySelector('.actions');
+  if(!actions) return null;
+
+  let btn = document.getElementById('btnShare');
+  if(!btn){
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'btnShare';
+    btn.className = 'btn btn-share';
+    btn.textContent = '공유';
+
+    // 설치 버튼 앞에 넣기(있으면)
+    const installBtn =
+      actions.querySelector('#btnInstallPwa') ||
+      actions.querySelector('#btnInstall') ||
+      Array.from(actions.querySelectorAll('button'))
+        .find(b => (b.textContent||'').trim() === '설치');
+
+    actions.insertBefore(btn, installBtn || null);
+  }
+  return btn;
+}
+
+function wireShareButtonOnce(){
+  const btn = ensureShareButton();
+  if(!btn || btn.__shareBoundV1) return;
+  btn.__shareBoundV1 = true;
+
+  btn.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    try{
+      const p = buildSharePayload();
+      const shareText = [p.text, p.url].filter(Boolean).join('\n\n');
+
+      if(navigator.share){
+        try{
+          const data = { title:p.title, text:p.text };
+          if(p.url) data.url = p.url;
+          if(navigator.canShare && p.file && navigator.canShare({ files:[p.file] })){
+            data.files = [p.file];
+          }
+          await navigator.share(data);
+          return;
+        }catch(err){
+          if(err?.name === 'AbortError') return;
+          console.warn('[Share] failed:', err?.name, err?.message);
+        }
+      }
+
+      const ok = await copyToClipboardFallback(shareText);
+      if(ok) alert('클립보드에 복사했습니다.');
+      else prompt('복사해서 사용하세요:', shareText);
+    }catch(err){
+      alert('공유 오류(콘솔 확인)');
+    }
+  });
+}
+
+function wireShareButtonOnce(){
+  if (window.__quoteShareBoundV1) return;
+  window.__quoteShareBoundV1 = true;
+
+  const btn =
+    document.getElementById('btnShare') ||
+    document.querySelector('[data-action="share"]');
+
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const payload = (typeof buildSharePayload === 'function')
+      ? buildSharePayload()
+      : { title: document.title, text: location.href, url: location.href };
+
+    const title = payload.title || document.title;
+    const text  = payload.text  || payload.url || location.href;
+    const url   = payload.url   || location.href;
+
+    try {
+      if (navigator.share) await navigator.share({ title, text, url });
+      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); alert('복사했습니다.'); }
+      else prompt('복사해서 공유하세요:', text);
+    } catch (e) {
+      console.warn('[share] failed', e);
+    }
+  }, { passive: true });
+}
+
+
 /** =========================
  * UI wiring
  * ========================= */
 function wireUI(){
+  ensureShareButton(); // ✅ 공유 버튼이 없으면 생성
+  if (typeof wireShareButtonOnce === 'function') wireShareButtonOnce();
+
   // 섹션 토글
   document.addEventListener('click', (e)=>{
     const shd = e.target.closest('.section .shd');
     if(!shd) return;
     const sec = shd.closest('.section');
     if(!sec) return;
-
+    const SAFE_MODE = new URLSearchParams(location.search).has('safe');
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation && e.stopImmediatePropagation();
@@ -4203,36 +4425,7 @@ function wireUI(){
     }
   }, true);
 
-  // 공유
-  q('#btnShare')?.addEventListener('click', async ()=>{
-    try{
-      // 최신값 반영이 필요하면 이 줄 활성화(선택)
-      // recalcLite();
 
-      const p = buildSharePayload();
-      const shareText = [p.text, p.url].filter(Boolean).join('\n\n');
-
-      if(navigator.share){
-        const data = { title: p.title, text: p.text };
-        if(p.url) data.url = p.url;
-
-        // 파일 공유가 되는 환경이면 JSON 첨부도 같이
-        if(navigator.canShare && navigator.canShare({ files: [p.file] })){
-          data.files = [p.file];
-        }
-
-        await navigator.share(data);
-        return;
-      }
-
-      // Web Share 미지원이면 클립보드 복사
-      await copyToClipboardFallback(shareText);
-      alert('공유 기능이 지원되지 않아 공유 내용을 클립보드에 복사했습니다.\n메신저/메일에 붙여넣기 하세요.');
-    }catch(err){
-      console.error('SHARE ERROR:', err);
-      alert('공유 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
-    }
-  });
 
 
   function doResetAll(){
@@ -4336,7 +4529,14 @@ function wireUI(){
 /** =========================
  * Footer
  * ========================= */
+
 function ensureFooter(){
+  // ✅ body가 아직 없으면 DOM 준비 후 다시 실행
+  if(!document.body){
+    document.addEventListener('DOMContentLoaded', ensureFooter, { once:true });
+    return;
+  }
+
   const year = new Date().getFullYear();
   const txt = `© ${year} Dev. Done by Dongseok Han · ${APP_VERSION}`;
 
@@ -4358,7 +4558,7 @@ function ensureFooter(){
         z-index: 9999;
       }
     `;
-    document.head.appendChild(st);
+    (document.head || document.documentElement).appendChild(st);
   }
 
   let f = q('#quoteFooter');
@@ -4369,6 +4569,9 @@ function ensureFooter(){
   }
   f.textContent = txt;
 }
+
+
+
 function ensureAutoBadgeStyle(){
   if(document.getElementById('autoBadgeStyle')) return;
   const st = document.createElement('style');
@@ -4690,22 +4893,46 @@ table thead tr::after{
     `;
     document.head.appendChild(st);
   })();
-  
+ 
 
-/** =========================
- * Boot
+/* =========================
+ * Boot (DOM ready safe)
  * ========================= */
-
-(function boot(){
+function boot(){
   try{
     initState();
 
-    // 작성자 프로필 최초 1회 입력
+    if (SAFE_MODE){
+      // 최소 렌더만 하고, 문서 전역 리스너/자동recalc를 건드리지 않음
+      ensureMyProfileOnce();
+      renderHeader();
+      renderInputs();
+      renderTabs();
+      ensureFooter();
+      renderDevPanel();
+      updateBoxPreview();
+      ensureAutoBadgeStyle();
+
+      // recalc는 수동으로만(원하면 버튼/콘솔로 호출)
+      _autosaveBooted = false;
+
+      const note = document.createElement('div');
+      note.style.cssText = 'position:fixed;top:8px;right:8px;z-index:100000;padding:8px 10px;border:1px solid rgba(15,23,42,.2);background:#fff;font-size:12px;font-weight:800;border-radius:10px;';
+      note.textContent = 'SAFE MODE (자동계산/전역이벤트 최소화)';
+      document.body.appendChild(note);
+
+      console.log(`[${APP_VERSION}] boot SAFE_MODE ok`);
+      return;
+    }
+
+    // --- 기존 boot 흐름 유지 ---
     ensureMyProfileOnce();
     wireUI();
     wireEnterToNextField();
     renderInputs();
-    applyOpenGroupsFromState();   // ✅ 추가
+
+    try{ applyOpenGroupsFromState(); }catch(_){}
+
     renderTabs();
     ensureFooter();
     renderDevPanel();
@@ -4713,15 +4940,28 @@ table thead tr::after{
     updateBoxPreview();
     ensureAutoBadgeStyle();
     initFieldSearch();
-    
 
     _autosaveBooted = true;
     console.log(`[${APP_VERSION}] boot ok`);
   }catch(err){
     console.error('BOOT ERROR:', err);
-    alert('스크립트 오류로 화면이 먹통입니다.\n\n크롬 F12 → Console의 빨간 에러 첫 줄을 복사해서 보내주세요.\n\n' + (err?.message||err));
+    alert('스크립트 오류로 화면이 먹통입니다.\n\n' + (err?.message||err));
+  }
+}
+
+(function bootLauncher(){
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', boot, { once:true });
+  }else{
+    if (!window.__QUOTE_SAFE_NOAUTOBOOT__) {
+      boot();
+    } else {
+      // safe 모드에서는 자동 부팅 대신, 페이지가 멈추지 않는지부터 확인
+      // (필요하면 여기서 bootSafe() 같은 최소 렌더만 호출)
+    }
   }
 })();
+
 
 /* =========================
    Header action buttons color theme v1
@@ -5131,13 +5371,9 @@ function applyShippingIncludeModeUI(){
     window.renderInputs.__warnLabelsHookedV2 = true;
   }
 
-  // 최초 1회
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', ()=>setTimeout(markWarnLabelsAndFields, 0), { once:true });
-  }else{
-    setTimeout(markWarnLabelsAndFields, 0);
-  }
 })();
+
+
 /* =========================
    운송비참조 업데이트 (운송비참조(26년도).xlsx / A2:M71) - FULL
    - head/rows 주입
@@ -5305,63 +5541,79 @@ function applyShippingIncludeModeUI(){
   try{ if(typeof recalcLite === 'function') recalcLite(); }catch(_){}
 })();
 
-/* PWA install button FINAL */
+
+/* PWA install button FINAL (SAFE: waits for DOM and null-guards) */
 (function PWA_INSTALL_BUTTON_FINAL(){
-  function hostEl(){ return document.querySelector('.actions') || document.body; }
+  if(window.__PWA_INSTALL_BUTTON_FINAL_SAFE__) return;
+  window.__PWA_INSTALL_BUTTON_FINAL_SAFE__ = true;
 
-  function ensureBtn(){
-    let btn = document.getElementById('btnInstallPwa');
-    if(btn) return btn;
+  function init(){
+    function hostEl(){
+      return document.querySelector('.actions') || document.body || null;
+    }
 
-    btn = document.createElement('button');
-    btn.id = 'btnInstallPwa';
-    btn.type = 'button';
-    btn.className = 'btn';
-    btn.textContent = '설치';
-    btn.style.marginLeft = '6px';
-    hostEl().appendChild(btn);
+    function ensureBtn(){
+      const host = hostEl();
+      if(!host) return null;
 
-    btn.addEventListener('click', async () => {
-      const dp = window.__pwaDeferredPrompt;
-      if(!dp){
-        alert('아직 설치할 수 없는 상태입니다. (설치 이벤트 미발생)');
-        return;
-      }
-      dp.prompt();
-      await dp.userChoice;
-      window.__pwaDeferredPrompt = null;
-      setEnabled(false);
+      let btn = document.getElementById('btnInstallPwa');
+      if(btn) return btn;
+
+      btn = document.createElement('button');
+      btn.id = 'btnInstallPwa';
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = '설치';
+      btn.style.marginLeft = '6px';
+      host.appendChild(btn);
+
+      btn.addEventListener('click', async () => {
+        const dp = window.__pwaDeferredPrompt;
+        if(!dp){
+          alert('아직 설치할 수 없는 상태입니다. (설치 이벤트 미발생)');
+          return;
+        }
+        dp.prompt();
+        await dp.userChoice;
+        window.__pwaDeferredPrompt = null;
+        setEnabled(false);
+      });
+
+      return btn;
+    }
+
+    function setEnabled(on){
+      const btn = ensureBtn();
+      if(!btn) return;
+      btn.disabled = !on;
+      btn.style.opacity = on ? '1' : '0.45';
+      btn.title = on ? '클릭해서 설치' : '설치 불가/대기중';
+    }
+
+    // 항상 버튼은 보이게(단, host가 생긴 뒤)
+    ensureBtn();
+    setEnabled(!!window.__pwaDeferredPrompt);
+
+    window.addEventListener('pwa:installable', ()=> setEnabled(true));
+
+    window.addEventListener('beforeinstallprompt', (e)=>{
+      e.preventDefault();
+      window.__pwaDeferredPrompt = e;
+      setEnabled(true);
     });
 
-    return btn;
+    window.addEventListener('appinstalled', ()=>{
+      window.__pwaDeferredPrompt = null;
+      const btn = document.getElementById('btnInstallPwa');
+      if(btn) btn.style.display = 'none';
+    });
   }
 
-  function setEnabled(on){
-    const btn = ensureBtn();
-    btn.disabled = !on;
-    btn.style.opacity = on ? '1' : '0.45';
-    btn.title = on ? '클릭해서 설치' : '설치 불가/대기중';
+  // ✅ DOM 준비 후 init 실행
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init, { once:true });
+  }else{
+    init();
   }
-
-  // 항상 버튼은 보이게
-  ensureBtn();
-
-  // 이미 잡혀있으면 즉시 활성화
-  setEnabled(!!window.__pwaDeferredPrompt);
-
-  // index.html에서 early capture 시 발생시키는 이벤트를 받아 활성화
-  window.addEventListener('pwa:installable', ()=> setEnabled(true));
-
-  // 혹시 early capture를 안 쓰는 경우를 대비(여기서도 잡음)
-  window.addEventListener('beforeinstallprompt', (e)=>{
-    e.preventDefault();
-    window.__pwaDeferredPrompt = e;
-    setEnabled(true);
-  });
-
-  window.addEventListener('appinstalled', ()=>{
-    window.__pwaDeferredPrompt = null;
-    const btn = document.getElementById('btnInstallPwa');
-    if(btn) btn.style.display = 'none';
-  });
 })();
+
