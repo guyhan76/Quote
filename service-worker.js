@@ -1,4 +1,4 @@
-const CACHE = 'boxqoute-pwa-v2026-02-07'; // 수정할 때마다 꼭 변경
+const CACHE_NAME = 'quote-cache-v20260208-1';// 수정할 때마다 꼭 변경
 
 const SCOPE_URL = self.registration.scope;          // https://.../boxqoute/
 const BASE = new URL(SCOPE_URL).pathname;           // /boxqoute/
@@ -14,14 +14,11 @@ const CORE = [
   U('assets/icons/icon-512.png')
 ];
 
-self.addEventListener('install', (event) => {
+self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    self.skipWaiting();
-    const cache = await caches.open(CACHE);
-    await Promise.allSettled(CORE.map(async (url) => {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) await cache.put(url, res);
-    }));
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+    await self.clients.claim();
   })());
 });
 
