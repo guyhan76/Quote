@@ -4388,6 +4388,82 @@ function wireShareButtonOnce(){
   }, { passive: true });
 }
 
+// =========================
+// Share (A: link + text, always works)
+// =========================
+function buildShareTextFromDom(){
+  const company = (document.getElementById('hdrCompany')?.textContent || '').trim();
+  const product = (document.getElementById('hdrProduct')?.textContent || '').trim();
+  const created = (document.getElementById('hdrCreatedAt')?.textContent || '').trim();
+  const url = location.href;
+
+  const lines = [];
+  lines.push(document.title || '견적 공유');
+  if (company && company !== '-') lines.push(`업체명: ${company}`);
+  if (product && product !== '-') lines.push(`품명: ${product}`);
+  if (created && created !== '-') lines.push(`생성: ${created}`);
+  lines.push(`링크: ${url}`);
+
+  return lines.join('\n');
+}
+
+async function shareLinkAndTextAlways(){
+  const url = location.href;
+  const title = document.title || '견적 공유';
+
+  let text = '';
+  try {
+    text = (typeof buildSharePayload === 'function')
+      ? (buildSharePayload()?.text || '')
+      : '';
+  } catch (_) {}
+  if (!text) text = buildShareTextFromDom();
+
+  // 1) Web Share 우선
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text, url });
+      return;
+    } catch (e) {
+      // 사용자가 공유창을 닫은 경우는 조용히 종료
+      if (e?.name === 'AbortError' || e?.name === 'NotAllowedError') return;
+    }
+  }
+
+  // 2) 클립보드 폴백(텍스트+링크를 우리가 직접 복사)
+  const toCopy = text.includes(url) ? text : `${text}\n${url}`;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(toCopy);
+    alert('공유용 텍스트+링크를 클립보드에 복사했습니다.');
+    return;
+  }
+
+  // 3) 최후 폴백
+  prompt('복사해서 공유하세요:', toCopy);
+}
+
+function wireShareButtonOnce(){
+  if (window.__quoteShareBoundV1) return;
+  window.__quoteShareBoundV1 = true;
+
+  const btn = document.getElementById('btnShare');
+  if (!btn) return;
+
+  // 기존 onclick이 남아있으면 제거(중복 실행 방지)
+  btn.onclick = null;
+
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await shareLinkAndTextAlways();
+    } catch (err) {
+      console.warn('[share] failed', err);
+      alert('공유에 실패했습니다.');
+    }
+  }, { passive:false });
+}
+
 
 /** =========================
  * UI wiring
@@ -4533,6 +4609,7 @@ function wireUI(){
       alert('초기화 중 오류가 발생했습니다. 콘솔의 RESET ERROR를 확인해주세요.');
     }
   }, true);
+  wireShareButtonOnce(); // ✅ 공유 버튼 연결
 }
 
 /** =========================
