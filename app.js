@@ -2163,6 +2163,15 @@ function loadState(){
   }
 }
 
+function migrateDefaultsV1(){
+  // 필드 경로는 프로젝트 실제 구조로 맞춰야 합니다.
+  const cur = state?.basic?.productName; // 예: 품명 필드
+  if (!cur || cur === '처음처럼') {
+    state.basic = state.basic || {};
+    state.basic.productName = '포장박스';
+  }
+}
+
 /** =========================
  * DOM helpers
  * ========================= */
