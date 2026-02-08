@@ -213,7 +213,7 @@ const FIELD_DEFS = [
   { group:'basic', key:'clientDept', label:'소속(고객)', type:'text', placeholder:'예) 구매팀' },
   { group:'basic', key:'clientJobTitle', label:'직책(고객)', type:'text', placeholder:'예) 대리' },
   { group:'basic', key:'clientName', label:'이름(고객)', type:'text', placeholder:'예) 김○○' },
-  { group:'basic', key:'itemName', label:'품명', type:'text', placeholder:'예) 처음처럼' },
+  { group:'basic', key:'itemName', label:'품명', type:'text', placeholder:'예) 포장박스' },
   { group:'basic', key:'quoteType', label:'견적타입', type:'select', options:QUOTE_TYPE_OPTIONS, default:'견적타입선택' },
   { group:'basic', key:'boxType', label:'박스형태', type:'select+custom', options: BOX_TYPE_OPTIONS, placeholder:'박스형태선택', customLabel:'직접입력' },
   { group:'basic', key:'innerLength', label:'장(내측, mm)', type:'mm' },
