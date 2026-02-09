@@ -1,5 +1,5 @@
 /* Quote/app.js (clean & complete) */
-const APP_VERSION = "Quote-V3.0";
+const APP_VERSION = "Quote-V4.0";
 const STORAGE_KEY = "quote_state_v1";
 window.APP_VERSION = APP_VERSION;
 window.STORAGE_KEY = STORAGE_KEY;
@@ -4491,7 +4491,33 @@ function wireUI(){
     scheduleAutosave();     
   }, true);
                    // ✅ 자동저장에 포함
-  
+  // === Share (file-based): make Share button generate the same JSON as "Save" ===
+(function wireShareAsSaveOnce(){
+  const btnShare = document.getElementById('btnShare');
+  if (!btnShare) return;
+  if (btnShare.__shareAsSaveBound) return;
+  btnShare.__shareAsSaveBound = true;
+
+  btnShare.addEventListener('click', () => {
+    const btnSave = document.getElementById('btnSaveFile');
+
+    // 1) 먼저 JSON 파일 저장(= 기존 "저장" 기능 그대로 사용)
+    if (btnSave) btnSave.click();
+    else alert('저장 버튼(#btnSaveFile)을 찾지 못했습니다. index.html 버튼 id를 확인해 주세요.');
+
+    // 2) 사용자가 카톡으로 보내고, 받는 사람이 불러오게 안내
+    setTimeout(() => {
+      alert(
+        '공유 방법(파일 공유)\n\n' +
+        '1) 방금 저장된 JSON 파일을 카카오톡으로 보내세요.\n' +
+        '2) 받는 사람은 아래 링크로 앱을 열고\n' +
+        `   ${location.origin + location.pathname}\n` +
+        '3) [불러오기] 버튼으로 그 JSON 파일을 선택하면 동일한 견적이 열립니다.'
+      );
+    }, 50);
+  });
+})();
+
   // 참조탭
   const tabbar = q('#tabbar');
   if(tabbar){
