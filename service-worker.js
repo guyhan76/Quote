@@ -1,67 +1,66 @@
-const CACHE_NAME = 'quote-cache-v20260208-1';// 수정할 때마다 꼭 변경
+/* Quote Service Worker (safe) */
+const SW_VERSION = '20260209-1';
+const CACHE_NAME = `quote-cache-${SW_VERSION}`;
 
-const SCOPE_URL = self.registration.scope;          // https://.../boxqoute/
-const BASE = new URL(SCOPE_URL).pathname;           // /boxqoute/
-const U = (p) => new URL(p, SCOPE_URL).toString();  // scope 기준 절대 URL
-
+// 최소 캐시(파일명 다르면 줄여도 됨)
 const CORE = [
-  U('./'),
-  U('index.html'),
-  U('styles.css'),
-  U('app.js'),
-  U('manifest.webmanifest'),
-  U('assets/icons/icon-192.png'),
-  U('assets/icons/icon-512.png')
+  './',
+  './index.html',
+  './app.js',
 ];
 
-self.addEventListener('activate', (event) => {
+self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
-    await self.clients.claim();
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(CORE.map(u => new Request(u, { cache: 'reload' })));
+    } catch (e) {
+      console.warn('[SW] install cache failed', e);
+    }
+    await self.skipWaiting();
   })());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => (k === CACHE ? null : caches.delete(k))));
+    try {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter(k => k.startsWith('quote-cache-') && k !== CACHE_NAME)
+          .map(k => caches.delete(k))
+      );
+    } catch (e) {
+      console.warn('[SW] activate cleanup failed', e);
+    }
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  const url = new URL(req.url);
-  if (url.origin !== location.origin) return;
+  if (req.method !== 'GET') return;
 
-  // 페이지 진입(HTML)은 network-first: 구버전 고착으로 인한 백지/먹통 방지
+  // 네비게이션은 절대 망가뜨리지 않기
   if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(req, { cache: 'no-store' });
-        const cache = await caches.open(CACHE);
-        await cache.put(U('index.html'), fresh.clone());
-        return fresh;
-      } catch {
-        const cache = await caches.open(CACHE);
-        return (await cache.match(U('index.html')))
-          || (await cache.match(U('./')))
-          || Response.error();
-      }
-    })());
+    event.respondWith(fetch(req).catch(() => caches.match('./index.html')));
     return;
   }
 
-  // 정적 자원은 cache-first
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    const cached = await cache.match(req);
-    if (cached) return cached;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
-    const res = await fetch(req);
-    if (res.ok) await cache.put(req, res.clone());
-    return res;
+  event.respondWith((async () => {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(req);
+      if (cached) return cached;
+
+      const res = await fetch(req);
+      if (res && res.ok) cache.put(req, res.clone());
+      return res;
+    } catch (e) {
+      return fetch(req);
+    }
   })());
 });
-

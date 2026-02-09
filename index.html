@@ -19,7 +19,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
 
   <!-- ✅ app.js는 딱 1번만 + defer 필수 -->
-  <script defer src="./app.js?v=20260208-1"></script>
+  <script defer src="./app.js?v=20260208-2"></script>
 
 
   <script>
@@ -44,7 +44,7 @@
           <div class="hdr-flow" id="hdrFlow">좌측 입력 → 중앙 자동계산 → 우측 비율 · 하단 참조표(일부연동)</div>
   
           <div class="hdr-kv" id="hdrMetaLine1">소속(작성자) : <span id="hdrDept">-</span></div>
-          <div class="hdr-kv" id="hdrMetaline2">직책(작성자) : <span id="hdrJobTitle">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine2">직책(작성자) : <span id="hdrJobTitle">-</span></div>
           <div class="hdr-kv" id="hdrMetaLine3">이름(작성자) : <span id="hdrUserName">-</span></div>
           <div class="hdr-kv" id="hdrMetaLine4">생성날짜 : <span id="hdrCreatedAt">-</span></div>
   
@@ -125,7 +125,7 @@
 
           <div class="section" data-open="0" data-group="print">
             <div class="shd"><strong>CTP/옵셋인쇄</strong><span>판수/단가/인쇄단가/기종</span></div>
-            <div class="sbd" style="display:none">
+            <div class="sbd">
               <div class="ab-grid" id="group_print"></div>
             </div>
           </div>
@@ -239,20 +239,54 @@
   </div>
   
   <script>
+    const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
+  
+    async function clearSwAndCaches() {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      } catch (e) {
+        console.warn('[SW] unregister failed', e);
+      }
+      try {
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+      } catch (e) {
+        console.warn('[SW] cache clear failed', e);
+      }
+    }
+  
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
-        const reg = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
-        await navigator.serviceWorker.ready;
+        const qs = new URLSearchParams(location.search);
   
-        if (!navigator.serviceWorker.controller && !sessionStorage.getItem('__swReloadedOnce')) {
-          sessionStorage.setItem('__swReloadedOnce', '1');
-          location.reload();
+        // 긴급 우회: ?nosw=1 이면 SW 사용 안 함 + 흔적 제거
+        if (qs.has('nosw')) {
+          await clearSwAndCaches();
+          console.log('[SW] disabled by nosw=1 (cleared)');
+          return;
+        }
+  
+        // 로컬 개발에서는 SW 등록하지 않음(재발 방지)
+        if (!IS_GITHUB_PAGES) {
+          await clearSwAndCaches();
+          return;
+        }
+  
+        // GitHub Pages에서만 SW 사용(버전 쿼리로 업데이트 강제)
+        try {
+          const reg = await navigator.serviceWorker.register('./service-worker.js?v=20260209-1');
+          reg.update?.();
+          console.log('[SW] registered', reg.scope);
+        } catch (e) {
+          console.warn('[SW] register failed:', e);
         }
       });
     }
   </script>
   
-
   
 </body>
 </html>
