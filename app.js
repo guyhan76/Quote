@@ -1,5 +1,5 @@
 /* Quote/app.js (clean & complete) */
-const APP_VERSION = "Quote-V4.0";
+const APP_VERSION = "Quote-V5.0";
 const STORAGE_KEY = "quote_state_v1";
 window.APP_VERSION = APP_VERSION;
 window.STORAGE_KEY = STORAGE_KEY;
