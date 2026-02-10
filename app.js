@@ -1,5 +1,5 @@
 /* Quote/app.js (clean & complete) */
-const APP_VERSION = "Quote-V5.0";
+const APP_VERSION = "Quote-V5.5";
 const STORAGE_KEY = "quote_state_v1";
 window.APP_VERSION = APP_VERSION;
 window.STORAGE_KEY = STORAGE_KEY;
@@ -469,8 +469,8 @@ function parseMaterialRefTSV(tsv){
   const PAPER_REF_KEY = '원지가격참조';
 
   const multI = { // 골심1 보정
-    GF:1.1, FF:1.2, EF:1.3, E:1.3, B:1.4,
-    A:0, EB:1.3, BB:1.4, BA:1.4, BF:1.3, C:0 // C는 명시 없어서 0 처리(필요시 바꿔줘)
+    GF:1.1, FF:1.2, EF:1.3, E:1.4, B:1.4,
+    A:0, EB:1.4, BB:1.4, BA:1.4, BF:1.4, C:0 // C는 명시 없어서 0 처리(필요시 바꿔줘)
   };
 
   const multK = { // 골심2 보정
@@ -479,9 +479,9 @@ function parseMaterialRefTSV(tsv){
   };
 
   const procFeeByCorr = {
-    GF:50, FF:50, EF:30, BF:40,
-    E:6, B:6, C:6, A:6,
-    EB:23, BB:23, BA:23
+    GF:50, FF:50, EF:20, BF:40,
+    E:-4, B:-4, C:-4, A:-4,
+    EB:8, BB:8, BA:8
   };
 
   function round1(n){ return Math.round(n*10)/10; }
@@ -671,9 +671,9 @@ function parseMaterialRefTSV(tsv){
     function round2(n){ return Math.round(n*100)/100; }
     function round3(n){ return Math.round(n*1000)/1000; }
   
-    const multI = { GF:1.1, FF:1.2, EF:1.3, E:1.3, B:1.4, A:0, EB:1.3, BB:1.4, BA:1.4, BF:1.3, C:0 };
+    const multI = { GF:1.1, FF:1.2, EF:1.3, E:1.4, B:1.4, A:0, EB:1.4, BB:1.4, BA:1.4, BF:1.3, C:0 };
     const multK = { GF:0, FF:0, EF:0, E:0, B:0, C:1.5, A:1.6, EB:1.4, BB:1.4, BA:1.6, BF:0 };
-    const procFeeByCorr = { GF:50, FF:50, EF:30, BF:40, E:6, B:6, C:6, A:6, EB:23, BB:23, BA:23 };
+    const procFeeByCorr = { GF:50, FF:50, EF:20, BF:40, E:-4, B:-4, C:-4, A:-4, EB:8, BB:8, BA:8 };
   
     function layerPlan(corr){
       const c = String(corr||'').toUpperCase();
@@ -818,9 +818,9 @@ function parseMaterialRefTSV(tsv){
     function round2(n){ return Math.round(n*100)/100; }
     function round3(n){ return Math.round(n*1000)/1000; }
   
-    const multI = { GF:1.1, FF:1.2, EF:1.3, E:1.3, B:1.4, A:0, EB:1.3, BB:1.4, BA:1.4, BF:1.3, C:0 };
+    const multI = { GF:1.1, FF:1.2, EF:1.3, E:1.4, B:1.4, A:0, EB:1.4, BB:1.4, BA:1.4, BF:1.3, C:0 };
     const multK = { GF:0, FF:0, EF:0, E:0, B:0, C:1.5, A:1.6, EB:1.4, BB:1.4, BA:1.6, BF:0 };
-    const procFeeByCorr = { GF:50, FF:50, EF:30, BF:40, E:6, B:6, C:6, A:6, EB:23, BB:23, BA:23 };
+    const procFeeByCorr = { GF:50, FF:50, EF:20, BF:40, E:-4, B:-4, C:-4, A:-4, EB:8, BB:8, BA:8 };
   
     function layerPlan(corr){
       const c = String(corr||'').toUpperCase();
