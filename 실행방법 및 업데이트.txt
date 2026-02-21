@@ -1,0 +1,7 @@
+Curser 경로와 로컬서버 실행 : PS C:\Users\user\Desktop\앱프로젝트\Quote> python -m http.server 3000
+
+https://localhost : 3000 
+
+https://github.com/guyhan76/Quote
+
+새로 업데이트하고 github에서 즉시 반영되기 위해서는 index.hmtl과 service-worker 에서 변경하고 올려야함.

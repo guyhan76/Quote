@@ -1,78 +1,36 @@
 <!doctype html>
 <html lang="ko">
+ 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>칼라박스 상세견적산출 (Quote)</title>
+  <title>박스견적계산기(전문가용)</title>
+
   <link rel="stylesheet" href="./styles.css" />
 
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+
+  <link rel="icon" href="./assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
+  <!-- ✅ app.js는 딱 1번만 + defer 필수 -->
+  <script defer src="./app.js?v=20260208-2"></script>
+
+
   <script>
-/* === FORCE_PATCH v1_5_1 (file:/// safe) === */
-(function(){
-  'use strict';
-  var PATCH='v1_5_1';
-  function swallow(msg){ try{ return String(msg||''); }catch(e){ return ''; } }
-
-  window.addEventListener('error', function(ev){
-    try{
-      var m = swallow(ev && (ev.message||ev.error&&ev.error.message));
-      if(/CORS|cross-origin|XMLHttpRequest|cdn-cgi\/rum|ERR_FAILED|Access-Control-Allow-Origin/i.test(m)){
-        ev.preventDefault && ev.preventDefault(); return true;
-      }
-    }catch(e){}
-  }, true);
-
-  window.addEventListener('unhandledrejection', function(ev){
-    try{
-      var m = swallow(ev && ev.reason);
-      if(/CORS|cross-origin|XMLHttpRequest|cdn-cgi\/rum|ERR_FAILED|Access-Control-Allow-Origin/i.test(m)){
-        ev.preventDefault && ev.preventDefault(); return true;
-      }
-    }catch(e){}
-  }, true);
-
-  function qa(sel){return Array.prototype.slice.call(document.querySelectorAll(sel))}
-  function q(sel){return document.querySelector(sel)}
-  function setPill(){ var pill = q('.pill'); if(pill) pill.textContent = 'Quote + FORCE_PATCH ' + PATCH; }
-
-  function nextFocusable(from){
-    var els = qa("input, select, textarea, button").filter(function(el){
-      if(!el || el.disabled) return false;
-      var st = window.getComputedStyle(el);
-      if(st.display==='none' || st.visibility==='hidden') return false;
-      if(el.type==='hidden') return false;
-      return true;
-    });
-    if(!els.length) return null;
-    var idx = els.indexOf(from);
-    if(idx<0) idx = -1;
-    return els[(idx+1)%els.length];
-  }
-
-  document.addEventListener('keydown', function(e){
-    try{
-      if(e.key !== 'Enter') return;
-      var t = e.target;
-      if(!t) return;
-      if(t.tagName==='TEXTAREA' && e.shiftKey) return;
-      if(t.tagName==='BUTTON') return;
-
+    // PWA install prompt를 최대한 일찍 잡아 저장
+    window.__pwaDeferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation && e.stopImmediatePropagation();
-      var n = nextFocusable(t);
-      if(n){
-        n.focus();
-        try{ n.select && n.select(); }catch(_){}
-      }
-    }catch(err){}
-  }, true);
-
-  function boot(){ try{ setPill(); }catch(e){} }
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', boot, {once:true});
-  } else boot();
-})();
+      window.__pwaDeferredPrompt = e;
+      window.dispatchEvent(new Event('pwa:installable'));
+      console.log('[PWA] captured beforeinstallprompt (early)');
+    });
   </script>
 </head>
 
@@ -80,19 +38,29 @@
   <div class="app">
     <div class="topbar">
       <div class="brand">
-        <div>
-          <div class="title">칼라박스 상세견적산출 (Quote)</div>
-          <div class="sub">좌측 입력 → 중앙 자동계산 → 우측 비율 · 하단 참조표(연동 예정)</div>
-          <div class="sub" id="companyPrint" style="display:none"></div>
+        <div class="title">박스견적계산기(전문가용)</div>
+  
+        <div class="hdr-lines" id="hdrLines">
+          <div class="hdr-flow" id="hdrFlow">좌측 입력 → 중앙 자동계산 → 우측 비율 · 하단 참조표(일부연동)</div>
+  
+          <div class="hdr-kv" id="hdrMetaLine1">소속(작성자) : <span id="hdrDept">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine2">직책(작성자) : <span id="hdrJobTitle">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine3">이름(작성자) : <span id="hdrUserName">-</span></div>
+          <div class="hdr-kv" id="hdrMetaLine4">생성날짜 : <span id="hdrCreatedAt">-</span></div>
+  
+          <div class="hdr-kv" id="hdrCompanyLine">업체명 : <span id="hdrCompany">-</span></div>
+          <div class="hdr-kv" id="hdrProductLine">품명 : <span id="hdrProduct">-</span></div>
         </div>
-        <span class="pill">Quote</span>
       </div>
-
+  
       <div class="actions">
         <button class="btn" id="btnReset" type="button">초기화</button>
-        <button class="btn primary" id="btnSave" type="button">임시저장</button>
-        <button class="btn" id="btnLoad" type="button">불러오기</button>
-        <button class="btn green" id="btnExport" type="button">PDF/인쇄</button>
+        <button class="btn primary" id="btnSaveFile" type="button">저장</button>
+        <button class="btn" id="btnLoadFile" type="button">불러오기</button>
+        <button class="btn" id="btnPdf" type="button">PDF</button>
+        <button class="btn green" id="btnPrint" type="button">인쇄</button>
+        <button class="btn" id="btnShare" type="button">공유</button>
+        <input id="stateFileInput" type="file" accept=".json,application/json" style="display:none" />
       </div>
     </div>
 
@@ -100,117 +68,134 @@
       <!-- LEFT -->
       <section class="panel" id="leftPanel">
         <div class="panel-hd">
-          <div>
-            <div class="h">입력</div>
-            <div class="hint">필드 정의(FIELD_DEFS)만 편집하면 입력폼이 자동 생성됩니다.</div>
-          </div>
-          <div class="hint" id="dirtyState">● 실시간 반영</div>
+          <div class="h">정보입력</div>
+          <div class="hint" id="dirtyState">● 실시간반영</div>
+          <div class="subline" id="infoHeaderLine2">기본정보/원단/용지/플렉소.옵셋인쇄/코팅/후가공/관리비/이윤/개발비</div>
         </div>
 
         <div class="panel-bd">
           <div class="filterbar">
-            <input id="fieldFilter" class="field" type="text" placeholder="필드 검색 (예: 용지, 원단, 코팅, 운송, 관리비)" />
+            <input id="fieldFilter" type="text" placeholder="필드 검색 (예: 원단, 용지, 코팅, 운송, 관리비)" />
             <button id="btnClearFilter" class="btn" type="button">지우기</button>
           </div>
 
           <div class="section" data-open="1" data-group="basic">
             <div class="shd"><strong>기본정보</strong><span>업체/품명/형태/규격/수량</span></div>
-            <div class="sbd"><div class="ab-grid" id="group_basic"></div></div>
-          </div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_basic"></div>
+              <!-- 기본정보 섹션 안 (예: <div class="ab-grid" id="group_basic"></div> 아래) -->
+<div class="box-preview" id="boxPreview">
+  <div class="box-preview-hd">
+    <strong>박스전개도 미리보기</strong>
+    <span id="boxPreviewLabel" class="muted">-</span>
+  </div>
+  <div class="box-preview-bd">
+    <img id="boxPreviewImg" alt="박스전개도 미리보기" />
+    <div id="boxPreviewEmpty" class="box-preview-empty">
+      박스형태를 선택하면 전개도 이미지가 표시됩니다.
+    </div>
+  </div>
+</div>
 
-          <div class="section" data-open="1" data-group="paper">
-            <div class="shd"><strong>용지</strong><span>규격(mm)/평량/단가/절수/할인/여유/로스</span></div>
-            <div class="sbd"><div class="ab-grid" id="group_paper"></div></div>
+            </div>
           </div>
 
           <div class="section" data-open="1" data-group="material">
             <div class="shd"><strong>원단</strong><span>규격(mm)/단가/절수/여유/로스</span></div>
-            <div class="sbd"><div class="ab-grid" id="group_material"></div></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_material"></div>
+            </div>
           </div>
 
+          <div class="section" data-open="1" data-group="paper">
+            <div class="shd"><strong>용지</strong><span>규격(mm)/평량/단가/절수/할인/여유/로스</span></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_paper"></div>
+            </div>
+          </div>
+
+<!-- FLEXO (플렉소인쇄) : 용지와 CTP/옵셋인쇄 사이 -->
+<div class="section" data-open="0" data-group="flexo">
+  <div class="shd"><strong>플렉소인쇄</strong><span>인쇄도수/색상/인쇄단가/기종</span></div>
+  <div class="sbd">
+    <div class="ab-grid" id="group_flexo"></div>
+  </div>
+</div>
+
+
           <div class="section" data-open="0" data-group="print">
-            <div class="shd"><strong>CTP/인쇄</strong><span>판수/단가/인쇄단가/기종</span></div>
-            <div class="sbd" style="display:none"><div class="ab-grid" id="group_print"></div></div>
+            <div class="shd"><strong>CTP/옵셋인쇄</strong><span>판수/단가/인쇄단가/기종</span></div>
+            <div class="sbd">
+              <div class="ab-grid" id="group_print"></div>
+            </div>
           </div>
 
           <div class="section" data-open="0" data-group="coating">
             <div class="shd"><strong>코팅/후가공</strong><span>코팅종류/후가공종류/후가공단가</span></div>
-            <div class="sbd" style="display:none"><div class="ab-grid" id="group_coating"></div></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_coating"></div>
+            </div>
           </div>
 
-          <!-- 문구 변경된 부분 -->
           <div class="section" data-open="0" data-group="shipping">
             <div class="shd"><strong>운송</strong><span>운송지역/차종/운송금액</span></div>
-            <div class="sbd" style="display:none"><div class="ab-grid" id="group_shipping"></div></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_shipping"></div>
+            </div>
           </div>
 
           <div class="section" data-open="0" data-group="admin">
             <div class="shd"><strong>관리비/이윤</strong><span>관리비율/이윤율</span></div>
-            <div class="sbd" style="display:none"><div class="ab-grid" id="group_admin"></div></div>
+            <div class="sbd" style="display:none">
+              <div class="ab-grid" id="group_admin"></div>
+            </div>
           </div>
 
           <div class="section" data-open="0" data-group="dev">
             <div class="shd"><strong>개발비</strong><span>자유항목(판매가 포함)</span></div>
             <div class="sbd" style="display:none">
               <div id="devList"></div>
-              <div style="display:flex; gap:8px; margin-top:10px;">
+              <div class="dev-actions">
                 <button class="btn" id="btnDevAdd" type="button">+ 항목 추가</button>
                 <button class="btn" id="btnDevClear" type="button">전체 삭제</button>
               </div>
-              <div class="hint" style="margin-top:8px; font-size:12px; color: rgba(15,23,42,.65);">
-                예: 샘플비 200,000 / 목형대 150,000
-              </div>
+              <div class="hint dev-hint">예: 샘플비 200,000 / 목형대 150,000</div>
             </div>
           </div>
-
         </div>
       </section>
 
       <!-- CENTER -->
-      <section class="panel">
+      <section class="panel" id="centerPanel">
         <div class="panel-hd">
-          <div>
-            <div class="h">자동계산</div>
-            <div class="hint">재료+가공+운송(base) → 관리비/이윤 → 판매가</div>
-          </div>
-          <div class="hint">file:// 안정 동작</div>
+          <div class="h">자동계산</div>
+          <div class="hint" id="calcHeaderLine2">(재료+가공+운송) + (관리비/이윤) + (개발비포함) = 총금액</div>
         </div>
 
         <div class="panel-bd">
           <div class="sheet">
-            <div class="toolbar">
-              <div class="left">
-                <span class="chip">TOTAL</span>
-                <span class="chip">sellTotal 기준 비율</span>
-              </div>
-              <span class="hint">금액은 원 단위 반올림</span>
-            </div>
-
-            <div style="max-height:520px; overflow:auto;">
-              <table class="grid" id="calcGrid">
-                <thead>
-                  <tr>
-                    <th style="width:110px">구분</th>
-                    <th>항목/근거</th>
-                    <th style="width:130px; text-align:right">금액(원)</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-
+            <table class="grid" id="calcGrid">
+              <thead>
+                <tr>
+                  <th style="width:80px">구분</th>
+                  <th>항목/근거</th>
+                  <th style="width:70px; text-align:right">수량</th>
+                  <th style="width:70px; text-align:right">단가(원)</th>
+                  <th style="width:100px; text-align:right">금액(원)</th>
+                </tr>
+              </thead>
+              
+              <tbody></tbody>
+            </table>
           </div>
         </div>
       </section>
 
       <!-- RIGHT -->
-      <section class="panel">
+      <section class="panel" id="rightPanel">
         <div class="panel-hd">
-          <div>
-            <div class="h">구성비(판매가 기준)</div>
-            <div class="hint">개발비 포함 · 0원 항목 자동 숨김</div>
-          </div>
-          <div class="hint">실시간</div>
+          <div class="h">구성비(판매가 기준)</div>
+          <div class="hint">● 실시간반영 · 0원 항목은 자동 숨김</div>
         </div>
 
         <div class="panel-bd">
@@ -219,7 +204,20 @@
               <div class="t">판매가 구성비</div>
               <div class="s" id="ratioSum">합계: -</div>
             </div>
-            <div class="bbody" id="ratioList"></div>
+
+            <div class="bbody">
+              <table class="grid" id="ratioTable">
+                <thead>
+                  <tr>
+                    <th style="width:60px">구분</th>
+                    <th style="width:80px; text-align:right">항목</th>
+                    <th style="width:55px; text-align:right">항목비율</th>
+                    <th style="width:55px; text-align:right">합계비율</th>
+                  </tr>
+                </thead>
+                <tbody id="ratioBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -229,10 +227,7 @@
     <section class="tabs">
       <div class="tabbar" id="tabbar"></div>
       <div class="tabpane">
-        <div class="refnote">
-          하단 참조표(샘플). 다음 단계에서 검색/선택 → 입력칸 자동 주입을 연결합니다.
-        </div>
-
+        <div class="refnote">하단 참조표 : 코팅, 운송비 검색/선택 → 입력칸 자동 연동.</div>
         <div class="refwrap">
           <table class="grid" id="refTable">
             <thead><tr id="refHead"></tr></thead>
@@ -242,8 +237,56 @@
       </div>
     </section>
   </div>
-
-  <script src="./data_ref.js"></script>
-  <script src="./app.js"></script>
+  
+  <script>
+    const IS_GITHUB_PAGES = location.hostname.endsWith('github.io');
+  
+    async function clearSwAndCaches() {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      } catch (e) {
+        console.warn('[SW] unregister failed', e);
+      }
+      try {
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+      } catch (e) {
+        console.warn('[SW] cache clear failed', e);
+      }
+    }
+  
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        const qs = new URLSearchParams(location.search);
+  
+        // 긴급 우회: ?nosw=1 이면 SW 사용 안 함 + 흔적 제거
+        if (qs.has('nosw')) {
+          await clearSwAndCaches();
+          console.log('[SW] disabled by nosw=1 (cleared)');
+          return;
+        }
+  
+        // 로컬 개발에서는 SW 등록하지 않음(재발 방지)
+        if (!IS_GITHUB_PAGES) {
+          await clearSwAndCaches();
+          return;
+        }
+  
+        // GitHub Pages에서만 SW 사용(버전 쿼리로 업데이트 강제)
+        try {
+          const reg = await navigator.serviceWorker.register('./service-worker.js?v=20260209-1');
+          reg.update?.();
+          console.log('[SW] registered', reg.scope);
+        } catch (e) {
+          console.warn('[SW] register failed:', e);
+        }
+      });
+    }
+  </script>
+  
+  
 </body>
 </html>
