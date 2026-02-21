@@ -3811,7 +3811,7 @@ function renderRatios(){
   })();
   
 
-renderTabs()function {
+  function renderTabs(){
   const bar=q('#tabbar');
   if(!bar) return;
   bar.innerHTML='';
