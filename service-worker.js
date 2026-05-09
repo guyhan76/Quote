@@ -1,5 +1,5 @@
 /* Quote Service Worker (safe) */
-const SW_VERSION = '20260509-1';
+const SW_VERSION = '20260509-3';
 const CACHE_NAME = `quote-cache-${SW_VERSION}`;
 
 // 최소 캐시(파일명 다르면 줄여도 됨)
