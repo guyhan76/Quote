@@ -1,5 +1,5 @@
 /* Quote/app.js (clean & complete) */
-const APP_VERSION = "Quote-V5.8";
+const APP_VERSION = "Quote-V5.9";
 const STORAGE_KEY = "quote_state_v1";
 window.APP_VERSION = APP_VERSION;
 window.STORAGE_KEY = STORAGE_KEY;
@@ -166,16 +166,16 @@ const COATING_TYPE_OPTIONS = [
 // =========================
 const COATING_UNITPRICE_REF = {
   '기계코팅': 0,
-  '유광CR': 49,
-  '무광CR': 49,
-  '오바코팅': 68,
-  '유광라미': 120,
-  '유광라미(1300이상)': 150,   // 옵션에 없더라도 추후 추가 대비
-  '무광라미': 130,
-  '무광라미(1300이상)': 160,   // 옵션에 없더라도 추후 추가 대비
+  '유광CR': 60,
+  '무광CR': 105,
+  '오바코팅': 79,
+  '유광라미': 130,
+  '유광라미(1300이상)': 170,   // 옵션에 없더라도 추후 추가 대비
+  '무광라미': 140,
+  '무광라미(1300이상)': 180,   // 옵션에 없더라도 추후 추가 대비
   'UV코팅': 80,
-  '창문(타공)라미': 138,       // 옵션에 없더라도 추후 추가 대비
-  '고주파(PET)': 110,
+  '창문(타공)라미': 158,       // 옵션에 없더라도 추후 추가 대비
+  '고주파(PET)': 130,
 };
 
 function lookupCoatingUnitPriceByType(name){
@@ -657,7 +657,7 @@ function parseMaterialRefTSV(tsv){
 window.REF_SAMPLE['용지가격참조'] = {
   head: ['용지종류','평량(gsm)','고시단가(kg)','재단단가(kg)','할인율%','생산단가(kg)','할인율%','비고'],
   rows: [
-    ['SC', 220, 1542, 940,     0.39, '', '', '한솔 기준(특가건 별도 협의)'],
+    ['SC', 220, 1542, 1010, 0.345, 940, 0.39 '한솔 기준(특가건 별도 협의)'],
     ['SC', 240, 1494, 1091, 0.27, '', '', '한솔 기준(특가건 별도 협의)'],
     ['SC', 300, 1406, 1026, 0.27, '', '', '한솔 기준(특가건 별도 협의)'],
     ['SC', 350, 1401, 1023, 0.27, '', '', '한솔 기준(특가건 별도 협의)'],
@@ -4335,7 +4335,7 @@ function ensureFooter(){
   }
 
   const year = new Date().getFullYear();
-  const txt = `© ${year} Dev. Done by Dongseok Han · ${APP_VERSION}`;
+  const txt = `© ${year} Dev. Done by Dongseok Labs Korea · ${APP_VERSION}`;
 
   if(!q('#quoteFooterStyle')){
     const st = document.createElement('style');
